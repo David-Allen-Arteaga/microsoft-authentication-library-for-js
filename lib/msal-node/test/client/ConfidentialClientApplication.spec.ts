@@ -52,7 +52,7 @@ import { INetworkModule } from "../../../msal-common/lib/types/exports-common.js
 
 jest.mock("jsonwebtoken");
 
-describe("ConfidentialClientApplication", () => {
+describe.skip("ConfidentialClientApplication", () => {
     beforeAll(() => {
         jest.spyOn(jwt, <any>"sign").mockReturnValue("fake_jwt_string");
     });

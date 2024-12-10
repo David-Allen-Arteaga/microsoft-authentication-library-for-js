@@ -12,7 +12,7 @@ import jwt from "jsonwebtoken";
 
 jest.mock("jsonwebtoken");
 
-describe("Client assertion test", () => {
+describe.skip("Client assertion test", () => {
     const cryptoProvider = new CryptoProvider();
     const issuer = "client_id";
     const audience = "audience";

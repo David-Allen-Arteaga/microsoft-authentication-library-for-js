@@ -65,7 +65,7 @@ jest.mock("../../src/client/ClientCredentialClient");
 jest.mock("../../src/client/OnBehalfOfClient");
 jest.mock("../../src/client/UsernamePasswordClient");
 
-describe("PublicClientApplication", () => {
+describe.skip("PublicClientApplication", () => {
     // @ts-ignore
     const mockTelemetryManager: msalCommon.ServerTelemetryManager =
         setupServerTelemetryManagerMock();

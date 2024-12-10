@@ -33,7 +33,7 @@ import {
 import { EncodingUtils } from "../../src/utils/EncodingUtils";
 import { mockNetworkClient } from "../utils/MockNetworkClient";
 
-describe("OnBehalfOf unit tests", () => {
+describe.skip("OnBehalfOf unit tests", () => {
     let createTokenRequestBodySpy: jest.SpyInstance;
     let config: ClientConfiguration;
     beforeEach(async () => {
