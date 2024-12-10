@@ -316,7 +316,7 @@ describe("PublicClientApplication", () => {
         });
     });
 
-    describe.skip("acquireTokenInteractive tests", () => {
+    describe("acquireTokenInteractive tests", () => {
         test("acquireTokenInteractive succeeds", async () => {
             const authApp = new PublicClientApplication(appConfig);
 
