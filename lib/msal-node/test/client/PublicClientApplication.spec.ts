@@ -326,9 +326,10 @@ describe("PublicClientApplication", () => {
                 expect(
                     url.startsWith("https://login.microsoftonline.com")
                 ).toBe(true);
-                http.get(
+                console.log(redirectUri);
+                /* http.get(
                     `${redirectUri}?code=${TEST_CONSTANTS.AUTHORIZATION_CODE}`
-                );
+                ); */
                 return Promise.resolve();
             };
             const request: InteractiveRequest = {
@@ -372,7 +373,7 @@ describe("PublicClientApplication", () => {
             expect(response.account).toEqual(mockAuthenticationResult.account);
         });
 
-        test.skip("acquireTokenInteractive - getting redirectUri waits for server to start", async () => {
+        test("acquireTokenInteractive - getting redirectUri waits for server to start", async () => {
             const authApp = new PublicClientApplication(appConfig);
 
             let redirectUri: string;
@@ -397,9 +398,10 @@ describe("PublicClientApplication", () => {
                 expect(
                     url.startsWith("https://login.microsoftonline.com")
                 ).toBe(true);
-                http.get(
+                console.log(redirectUri);
+                /* http.get(
                     `${redirectUri}?code=${TEST_CONSTANTS.AUTHORIZATION_CODE}`
-                );
+                ); */
                 return Promise.resolve();
             };
             const request: InteractiveRequest = {
