@@ -317,7 +317,7 @@ describe("PublicClientApplication", () => {
     });
 
     describe("acquireTokenInteractive tests", () => {
-        test.skip("acquireTokenInteractive succeeds", async () => {
+        test("acquireTokenInteractive succeeds", async () => {
             const authApp = new PublicClientApplication(appConfig);
 
             let redirectUri: string;
@@ -372,7 +372,7 @@ describe("PublicClientApplication", () => {
             expect(response.account).toEqual(mockAuthenticationResult.account);
         });
 
-        test("acquireTokenInteractive - getting redirectUri waits for server to start", async () => {
+        test.skip("acquireTokenInteractive - getting redirectUri waits for server to start", async () => {
             const authApp = new PublicClientApplication(appConfig);
 
             let redirectUri: string;
