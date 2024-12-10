@@ -39,7 +39,7 @@ import {
     UsernamePasswordRequest,
     SilentFlowRequest,
 } from "../../src";
-import http from "http";
+//import http from "http";
 
 import * as msalNode from "../../src";
 import { setupServerTelemetryManagerMock } from "./test-fixtures";
