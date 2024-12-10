@@ -65,7 +65,7 @@ jest.mock("../../src/client/ClientCredentialClient");
 jest.mock("../../src/client/OnBehalfOfClient");
 jest.mock("../../src/client/UsernamePasswordClient");
 
-describe.skip("PublicClientApplication", () => {
+describe("PublicClientApplication", () => {
     // @ts-ignore
     const mockTelemetryManager: msalCommon.ServerTelemetryManager =
         setupServerTelemetryManagerMock();
@@ -214,7 +214,7 @@ describe.skip("PublicClientApplication", () => {
         expect(RefreshTokenClient).toHaveBeenCalledTimes(1);
     });
 
-    describe("acquireTokenSilent tests", () => {
+    describe.skip("acquireTokenSilent tests", () => {
         test("acquireTokenSilent succeeds", async () => {
             const request: SilentFlowRequest = {
                 account: mockAccountInfo,
@@ -316,7 +316,7 @@ describe.skip("PublicClientApplication", () => {
         });
     });
 
-    describe("acquireTokenInteractive tests", () => {
+    describe.skip("acquireTokenInteractive tests", () => {
         test("acquireTokenInteractive succeeds", async () => {
             const authApp = new PublicClientApplication(appConfig);
 
