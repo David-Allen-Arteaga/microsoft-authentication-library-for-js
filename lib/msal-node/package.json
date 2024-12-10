@@ -47,7 +47,7 @@
     "build": "npm run clean && rollup -c --strictDeprecations --bundleConfigAsCjs",
     "build:watch": "rollup -c --watch --strictDeprecations --bundleConfigAsCjs",
     "clean": "shx rm -rf dist lib",
-    "test": "jest --testMatch **/EncodingUtils.spec.ts",
+    "test": "jest --testMatch **/cache/**.spec.ts --testMatch **/client/**.spec.ts",
     "test:watch": "jest --watch",
     "test:coverage": "jest --coverage",
     "lint": "eslint src --ext .ts",
