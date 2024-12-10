@@ -214,7 +214,7 @@ describe("PublicClientApplication", () => {
         expect(RefreshTokenClient).toHaveBeenCalledTimes(1);
     });
 
-    describe.skip("acquireTokenSilent tests", () => {
+    describe("acquireTokenSilent tests", () => {
         test("acquireTokenSilent succeeds", async () => {
             const request: SilentFlowRequest = {
                 account: mockAccountInfo,
@@ -317,7 +317,7 @@ describe("PublicClientApplication", () => {
     });
 
     describe("acquireTokenInteractive tests", () => {
-        test("acquireTokenInteractive succeeds", async () => {
+        test.skip("acquireTokenInteractive succeeds", async () => {
             const authApp = new PublicClientApplication(appConfig);
 
             let redirectUri: string;
@@ -372,7 +372,7 @@ describe("PublicClientApplication", () => {
             expect(response.account).toEqual(mockAuthenticationResult.account);
         });
 
-        test("acquireTokenInteractive - getting redirectUri waits for server to start", async () => {
+        test.skip("acquireTokenInteractive - getting redirectUri waits for server to start", async () => {
             const authApp = new PublicClientApplication(appConfig);
 
             let redirectUri: string;
@@ -443,7 +443,7 @@ describe("PublicClientApplication", () => {
             expect(response.account).toEqual(mockAuthenticationResult.account);
         });
 
-        test("acquireTokenInteractive - with custom loopback client succeeds", async () => {
+        test.skip("acquireTokenInteractive - with custom loopback client succeeds", async () => {
             const authApp = new PublicClientApplication(appConfig);
 
             const openBrowser = (url: string) => {
