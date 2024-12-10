@@ -24,7 +24,7 @@ import { checkMockedNetworkRequest, ClientTestUtils } from "./ClientTestUtils";
 import { DeviceCodeClient } from "../../src";
 import { mockNetworkClient } from "../utils/MockNetworkClient";
 
-describe.skip("DeviceCodeClient unit tests", () => {
+describe("DeviceCodeClient unit tests", () => {
     let createTokenRequestBodySpy: jest.SpyInstance;
     let executePostRequestToDeviceCodeEndpointSpy: jest.SpyInstance;
     let executePostToTokenEndpointSpy: jest.SpyInstance;
