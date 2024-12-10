@@ -443,7 +443,7 @@ describe("PublicClientApplication", () => {
             expect(response.account).toEqual(mockAuthenticationResult.account);
         });
 
-        test.skip("acquireTokenInteractive - with custom loopback client succeeds", async () => {
+        test("acquireTokenInteractive - with custom loopback client succeeds", async () => {
             const authApp = new PublicClientApplication(appConfig);
 
             const openBrowser = (url: string) => {
