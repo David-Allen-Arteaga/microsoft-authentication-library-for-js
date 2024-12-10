@@ -42,7 +42,7 @@ import {
 } from "./ClientTestUtils";
 import { mockNetworkClient } from "../utils/MockNetworkClient";
 
-describe.skip("ClientCredentialClient unit tests", () => {
+describe("ClientCredentialClient unit tests", () => {
     let createTokenRequestBodySpy: jest.SpyInstance;
     let config: ClientConfiguration;
     beforeEach(async () => {
