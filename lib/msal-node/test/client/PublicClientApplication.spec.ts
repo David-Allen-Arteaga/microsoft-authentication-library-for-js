@@ -372,7 +372,7 @@ describe("PublicClientApplication", () => {
             expect(response.account).toEqual(mockAuthenticationResult.account);
         });
 
-        test.skip("acquireTokenInteractive - getting redirectUri waits for server to start", async () => {
+        test("acquireTokenInteractive - getting redirectUri waits for server to start", async () => {
             const authApp = new PublicClientApplication(appConfig);
 
             let redirectUri: string;
