@@ -52,7 +52,6 @@ import { SsoSilentRequest } from "../request/SsoSilentRequest.js";
 import { RedirectRequest } from "../request/RedirectRequest.js";
 import { PopupRequest } from "../request/PopupRequest.js";
 import { base64Decode } from "../encode/Base64Decode.js";
-import { CookieStorage } from "./CookieStorage.js";
 import { TemporaryCache } from "./TemporaryCache.js";
 import { generateCacheKey } from "./CacheHelpers.js";
 
@@ -70,8 +69,6 @@ export class BrowserCacheManager extends CacheManager {
     protected internalStorage: MemoryStorage<string>;
     // Temporary cache
     protected tempCache: TemporaryCache;
-    // Cookie storage
-    protected cookieStorage: CookieStorage;
     // Logger instance
     protected logger: Logger;
     // Telemetry perf client
@@ -93,7 +90,6 @@ export class BrowserCacheManager extends CacheManager {
             this.cacheConfig.cacheLocation
         );
         this.tempCache = new TemporaryCache(clientId, cacheConfig);
-        this.cookieStorage = new CookieStorage();
 
         // Migrate cache entries from older versions of MSAL.
         if (cacheConfig.cacheMigrationEnabled) {
