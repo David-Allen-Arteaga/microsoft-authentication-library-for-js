@@ -25,6 +25,8 @@ import { BrowserCacheManager } from "../cache/BrowserCacheManager.js";
 import { INavigationClient } from "../navigation/INavigationClient.js";
 import { NavigationOptions } from "../navigation/NavigationOptions.js";
 import { AuthenticationResult } from "../response/AuthenticationResult.js";
+import { TemporaryCache } from "../cache/TemporaryCache.js";
+import { base64Encode } from "../encode/Base64Encode.js";
 
 export type RedirectParams = {
     navigationClient: INavigationClient;
@@ -36,6 +38,7 @@ export type RedirectParams = {
 export class RedirectHandler {
     authModule: AuthorizationCodeClient;
     browserStorage: BrowserCacheManager;
+    tempCache: TemporaryCache;
     authCodeRequest: CommonAuthorizationCodeRequest;
     logger: Logger;
     performanceClient: IPerformanceClient;
@@ -43,12 +46,14 @@ export class RedirectHandler {
     constructor(
         authCodeModule: AuthorizationCodeClient,
         storageImpl: BrowserCacheManager,
+        tempCache: TemporaryCache,
         authCodeRequest: CommonAuthorizationCodeRequest,
         logger: Logger,
         performanceClient: IPerformanceClient
     ) {
         this.authModule = authCodeModule;
         this.browserStorage = storageImpl;
+        this.tempCache = tempCache;
         this.authCodeRequest = authCodeRequest;
         this.logger = logger;
         this.performanceClient = performanceClient;
@@ -70,20 +75,22 @@ export class RedirectHandler {
                 this.logger.verbose(
                     "RedirectHandler.initiateAuthRequest: redirectStartPage set, caching start page"
                 );
-                this.browserStorage.setTemporaryCache(
+                this.tempCache.setItem(
                     TemporaryCacheKeys.ORIGIN_URI,
-                    params.redirectStartPage,
-                    true
+                    params.redirectStartPage
                 );
             }
 
             // Set interaction status in the library.
-            this.browserStorage.setTemporaryCache(
+            this.tempCache.setItem(
                 TemporaryCacheKeys.CORRELATION_ID,
-                this.authCodeRequest.correlationId,
-                true
+                this.authCodeRequest.correlationId
             );
-            this.browserStorage.cacheCodeRequest(this.authCodeRequest);
+            const encodedValue = base64Encode(JSON.stringify(this.authCodeRequest));
+            this.tempCache.setItem(
+                TemporaryCacheKeys.REQUEST_PARAMS,
+                encodedValue
+            );
             this.logger.infoPii(
                 `RedirectHandler.initiateAuthRequest: Navigate to: ${requestUrl}`
             );
@@ -144,16 +151,14 @@ export class RedirectHandler {
      */
     async handleCodeResponse(
         response: ServerAuthorizationCodeResponse,
-        state: string
     ): Promise<AuthenticationResult> {
         this.logger.verbose("RedirectHandler.handleCodeResponse called");
 
         // Interaction is completed - remove interaction status.
-        this.browserStorage.setInteractionInProgress(false);
+        this.tempCache.setInteractionInProgress(false);
 
         // Handle code response.
-        const stateKey = this.browserStorage.generateStateKey(state);
-        const requestState = this.browserStorage.getTemporaryCache(stateKey);
+        const requestState = this.tempCache.getItem(TemporaryCacheKeys.REQUEST_STATE);
         if (!requestState) {
             throw createClientAuthError(
                 ClientAuthErrorCodes.stateNotFound,
@@ -182,8 +187,7 @@ export class RedirectHandler {
         }
 
         // Get cached items
-        const nonceKey = this.browserStorage.generateNonceKey(requestState);
-        const cachedNonce = this.browserStorage.getTemporaryCache(nonceKey);
+        const cachedNonce = this.tempCache.getItem(TemporaryCacheKeys.NONCE_IDTOKEN);
 
         // Assign code to request
         this.authCodeRequest.code = authCodeResponse.code;
@@ -221,7 +225,7 @@ export class RedirectHandler {
             authCodeResponse
         )) as AuthenticationResult;
 
-        this.browserStorage.cleanRequestByState(state);
+        this.tempCache.clear();
         return tokenResponse;
     }
 
@@ -230,9 +234,8 @@ export class RedirectHandler {
      */
     protected checkCcsCredentials(): CcsCredential | null {
         // Look up ccs credential in temp cache
-        const cachedCcsCred = this.browserStorage.getTemporaryCache(
-            TemporaryCacheKeys.CCS_CREDENTIAL,
-            true
+        const cachedCcsCred = this.tempCache.getItem(
+            TemporaryCacheKeys.CCS_CREDENTIAL
         );
         if (cachedCcsCred) {
             try {

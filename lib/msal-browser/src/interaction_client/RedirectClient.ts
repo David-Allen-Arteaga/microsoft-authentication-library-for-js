@@ -9,7 +9,6 @@ import {
     UrlString,
     AuthError,
     ServerTelemetryManager,
-    Constants,
     ProtocolUtils,
     ServerAuthorizationCodeResponse,
     ThrottlingUtils,
@@ -22,6 +21,9 @@ import {
     ServerResponseType,
     UrlUtils,
     InProgressPerformanceEvent,
+    AccountInfo,
+    CcsCredential,
+    CcsCredentialType,
 } from "@azure/msal-common/browser";
 import { StandardInteractionClient } from "./StandardInteractionClient.js";
 import {
@@ -48,6 +50,8 @@ import { INavigationClient } from "../navigation/INavigationClient.js";
 import { EventError } from "../event/EventMessage.js";
 import { AuthenticationResult } from "../response/AuthenticationResult.js";
 import * as ResponseHandler from "../response/ResponseHandler.js";
+import { TemporaryCache } from "../cache/TemporaryCache.js";
+import { base64Decode } from "../encode/Base64Decode.js";
 
 function getNavigationType(): NavigationTimingType | undefined {
     if (
@@ -67,6 +71,7 @@ function getNavigationType(): NavigationTimingType | undefined {
 
 export class RedirectClient extends StandardInteractionClient {
     protected nativeStorage: BrowserCacheManager;
+    private tempCache: TemporaryCache;
 
     constructor(
         config: BrowserConfiguration,
@@ -92,6 +97,7 @@ export class RedirectClient extends StandardInteractionClient {
             correlationId
         );
         this.nativeStorage = nativeStorageImpl;
+        this.tempCache = new TemporaryCache(config.auth.clientId, config.cache);
     }
 
     /**
@@ -107,7 +113,7 @@ export class RedirectClient extends StandardInteractionClient {
             this.correlationId
         )(request, InteractionType.Redirect);
 
-        this.browserStorage.updateCacheEntries(
+        this.updateCacheEntries(
             validRequest.state,
             validRequest.nonce,
             validRequest.authority,
@@ -124,7 +130,7 @@ export class RedirectClient extends StandardInteractionClient {
                 this.logger.verbose(
                     "Page was restored from back/forward cache. Clearing temporary cache."
                 );
-                this.browserStorage.cleanRequestByState(validRequest.state);
+                this.tempCache.clear();
                 this.eventHandler.emitEvent(
                     EventType.RESTORE_FROM_BFCACHE,
                     InteractionType.Redirect
@@ -162,6 +168,7 @@ export class RedirectClient extends StandardInteractionClient {
             const interactionHandler = new RedirectHandler(
                 authClient,
                 this.browserStorage,
+                this.tempCache,
                 authCodeRequest,
                 this.logger,
                 this.performanceClient
@@ -201,7 +208,7 @@ export class RedirectClient extends StandardInteractionClient {
                 serverTelemetryManager.cacheFailedRequest(e);
             }
             window.removeEventListener("pageshow", handleBackButton);
-            this.browserStorage.cleanRequestByState(validRequest.state);
+            this.tempCache.clear();
             throw e;
         }
     }
@@ -222,7 +229,7 @@ export class RedirectClient extends StandardInteractionClient {
         );
 
         try {
-            if (!this.browserStorage.isInteractionInProgress(true)) {
+            if (!this.tempCache.isInteractionInProgress(true)) {
                 this.logger.info(
                     "handleRedirectPromise called but there is no interaction in progress, returning null."
                 );
@@ -236,9 +243,7 @@ export class RedirectClient extends StandardInteractionClient {
                 this.logger.info(
                     "handleRedirectPromise did not detect a response as a result of a redirect. Cleaning temporary cache."
                 );
-                this.browserStorage.cleanRequestByInteractionType(
-                    InteractionType.Redirect
-                );
+                this.tempCache.clear();
 
                 // Do not instrument "no_server_response" if user clicked back button
                 if (getNavigationType() !== "back_forward") {
@@ -253,10 +258,9 @@ export class RedirectClient extends StandardInteractionClient {
 
             // If navigateToLoginRequestUrl is true, get the url where the redirect request was initiated
             const loginRequestUrl =
-                this.browserStorage.getTemporaryCache(
-                    TemporaryCacheKeys.ORIGIN_URI,
-                    true
-                ) || Constants.EMPTY_STRING;
+                this.tempCache.getItem(
+                    TemporaryCacheKeys.ORIGIN_URI
+                ) || "";
             const loginRequestUrlNormalized =
                 UrlString.removeHashFromUrl(loginRequestUrl);
             const currentUrlNormalized = UrlString.removeHashFromUrl(
@@ -299,10 +303,9 @@ export class RedirectClient extends StandardInteractionClient {
                  * Returned from authority using redirect - need to perform navigation before processing response
                  * Cache the hash to be retrieved after the next redirect
                  */
-                this.browserStorage.setTemporaryCache(
+                this.tempCache.setItem(
                     TemporaryCacheKeys.URL_HASH,
-                    responseString,
-                    true
+                    responseString
                 );
                 const navigationOptions: NavigationOptions = {
                     apiId: ApiId.handleRedirectPromise,
@@ -319,10 +322,9 @@ export class RedirectClient extends StandardInteractionClient {
                     // Redirect to home page if login request url is null (real null or the string null)
                     const homepage = BrowserUtils.getHomepage();
                     // Cache the homepage under ORIGIN_URI to ensure cached hash is processed on homepage
-                    this.browserStorage.setTemporaryCache(
+                    this.tempCache.setItem(
                         TemporaryCacheKeys.ORIGIN_URI,
-                        homepage,
-                        true
+                        homepage
                     );
                     this.logger.warning(
                         "Unable to get valid login request url from cache, redirecting to home page"
@@ -359,9 +361,7 @@ export class RedirectClient extends StandardInteractionClient {
                 (e as AuthError).setCorrelationId(this.correlationId);
                 serverTelemetryManager.cacheFailedRequest(e);
             }
-            this.browserStorage.cleanRequestByInteractionType(
-                InteractionType.Redirect
-            );
+            this.tempCache.clear();
             throw e;
         }
     }
@@ -412,12 +412,11 @@ export class RedirectClient extends StandardInteractionClient {
             return [response, responseString];
         }
 
-        const cachedHash = this.browserStorage.getTemporaryCache(
-            TemporaryCacheKeys.URL_HASH,
-            true
+        const cachedHash = this.tempCache.getItem(
+            TemporaryCacheKeys.URL_HASH
         );
-        this.browserStorage.removeItem(
-            this.browserStorage.generateCacheKey(TemporaryCacheKeys.URL_HASH)
+        this.tempCache.removeItem(
+            TemporaryCacheKeys.URL_HASH
         );
 
         if (cachedHash) {
@@ -447,7 +446,7 @@ export class RedirectClient extends StandardInteractionClient {
             throw createBrowserAuthError(BrowserAuthErrorCodes.noStateInHash);
         }
 
-        const cachedRequest = this.browserStorage.getCachedRequest(state);
+        const cachedRequest = this.getCachedRequest();
         this.logger.verbose("handleResponse called, retrieved cached request");
 
         if (serverParams.accountId) {
@@ -484,12 +483,12 @@ export class RedirectClient extends StandardInteractionClient {
                     prompt: undefined, // Server should handle the prompt, ideally native broker can do this part silently
                 })
                 .finally(() => {
-                    this.browserStorage.cleanRequestByState(state);
+                    this.tempCache.clear();
                 });
         }
 
         // Hash contains known properties - handle and return in callback
-        const currentAuthority = this.browserStorage.getCachedAuthority(state);
+        const currentAuthority = this.tempCache.getItem(TemporaryCacheKeys.AUTHORITY);
         if (!currentAuthority) {
             throw createBrowserAuthError(
                 BrowserAuthErrorCodes.noCachedAuthorityError
@@ -512,11 +511,12 @@ export class RedirectClient extends StandardInteractionClient {
         const interactionHandler = new RedirectHandler(
             authClient,
             this.browserStorage,
+            this.tempCache,
             cachedRequest,
             this.logger,
             this.performanceClient
         );
-        return interactionHandler.handleCodeResponse(serverParams, state);
+        return interactionHandler.handleCodeResponse(serverParams);
     }
 
     /**
@@ -602,8 +602,8 @@ export class RedirectClient extends StandardInteractionClient {
                         "Logout onRedirectNavigate did not return false, navigating"
                     );
                     // Ensure interaction is in progress
-                    if (!this.browserStorage.getInteractionInProgress()) {
-                        this.browserStorage.setInteractionInProgress(true);
+                    if (!this.tempCache.isInteractionInProgress(false)) {
+                        this.tempCache.setInteractionInProgress(true);
                     }
                     await this.navigationClient.navigateExternal(
                         logoutUri,
@@ -612,15 +612,15 @@ export class RedirectClient extends StandardInteractionClient {
                     return;
                 } else {
                     // Ensure interaction is not in progress
-                    this.browserStorage.setInteractionInProgress(false);
+                    this.tempCache.setInteractionInProgress(false);
                     this.logger.verbose(
                         "Logout onRedirectNavigate returned false, stopping navigation"
                     );
                 }
             } else {
                 // Ensure interaction is in progress
-                if (!this.browserStorage.getInteractionInProgress()) {
-                    this.browserStorage.setInteractionInProgress(true);
+                if (!this.tempCache.isInteractionInProgress(false)) {
+                    this.tempCache.setInteractionInProgress(true);
                 }
                 await this.navigationClient.navigateExternal(
                     logoutUri,
@@ -662,5 +662,88 @@ export class RedirectClient extends StandardInteractionClient {
             redirectStartPage,
             BrowserUtils.getCurrentUri()
         );
+    }
+
+    /**
+     * Gets the token exchange parameters from the cache. Throws an error if nothing is found.
+     */
+    getCachedRequest(): CommonAuthorizationCodeRequest {
+        this.logger.trace("getCachedRequest called");
+        // Get token request from cache and parse as TokenExchangeParameters.
+        const encodedTokenRequest = this.tempCache.getItem(
+            TemporaryCacheKeys.REQUEST_PARAMS,
+        );
+        if (!encodedTokenRequest) {
+            throw createBrowserAuthError(
+                BrowserAuthErrorCodes.noTokenRequestCacheError
+            );
+        }
+
+        let parsedRequest: CommonAuthorizationCodeRequest;
+        try {
+            parsedRequest = JSON.parse(base64Decode(encodedTokenRequest));
+        } catch (e) {
+            this.logger.errorPii(`Attempted to parse: ${encodedTokenRequest}`);
+            this.logger.error(
+                `Parsing cached token request threw with error: ${e}`
+            );
+            throw createBrowserAuthError(
+                BrowserAuthErrorCodes.unableToParseTokenRequestCacheError
+            );
+        }
+        this.tempCache.removeItem(
+            TemporaryCacheKeys.REQUEST_PARAMS
+        );
+
+        // Get cached authority and use if no authority is cached with request.
+        if (!parsedRequest.authority) {
+            const cachedAuthority = this.tempCache.getItem(TemporaryCacheKeys.AUTHORITY);
+            if (!cachedAuthority) {
+                throw createBrowserAuthError(
+                    BrowserAuthErrorCodes.noCachedAuthorityError
+                );
+            }
+            parsedRequest.authority = cachedAuthority;
+        }
+
+        return parsedRequest;
+    }
+
+    /**
+     * Updates account, authority, and state in cache
+     * @param serverAuthenticationRequest
+     * @param account
+     */
+    updateCacheEntries(
+        state: string,
+        nonce: string,
+        authorityInstance: string,
+        loginHint: string,
+        account: AccountInfo | null
+    ): void {
+        this.logger.trace("BrowserCacheManager.updateCacheEntries called");
+        this.tempCache.setItem(TemporaryCacheKeys.REQUEST_STATE, state);
+        this.tempCache.setItem(TemporaryCacheKeys.NONCE_IDTOKEN, nonce);
+        this.tempCache.setItem(TemporaryCacheKeys.AUTHORITY, authorityInstance);
+
+        if (account) {
+            const ccsCredential: CcsCredential = {
+                credential: account.homeAccountId,
+                type: CcsCredentialType.HOME_ACCOUNT_ID,
+            };
+            this.tempCache.setItem(
+                TemporaryCacheKeys.CCS_CREDENTIAL,
+                JSON.stringify(ccsCredential),
+            );
+        } else if (loginHint) {
+            const ccsCredential: CcsCredential = {
+                credential: loginHint,
+                type: CcsCredentialType.UPN,
+            };
+            this.tempCache.setItem(
+                TemporaryCacheKeys.CCS_CREDENTIAL,
+                JSON.stringify(ccsCredential),
+            );
+        }
     }
 }

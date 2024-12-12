@@ -87,6 +87,7 @@ import { ClearCacheRequest } from "../request/ClearCacheRequest.js";
 import { createNewGuid } from "../crypto/BrowserCrypto.js";
 import { initializeSilentRequest } from "../request/RequestHelpers.js";
 import { InitializeApplicationRequest } from "../request/InitializeApplicationRequest.js";
+import { TemporaryCache } from "../cache/TemporaryCache.js";
 
 function getAccountType(
     account?: AccountInfo
@@ -125,6 +126,9 @@ export class StandardController implements IController {
 
     // Storage interface implementation
     protected readonly browserStorage: BrowserCacheManager;
+
+    // Temporary Cache
+    private tempCache: TemporaryCache;
 
     // Native Cache in memory storage implementation
     protected readonly nativeInternalStorage: BrowserCacheManager;
@@ -249,6 +253,8 @@ export class StandardController implements IController {
                   this.config.auth.clientId,
                   this.logger
               );
+
+        this.tempCache = new TemporaryCache(this.config.auth.clientId, this.config.cache);
 
         // initialize in memory storage for native flows
         const nativeCacheOptions: Required<CacheOptions> = {
@@ -440,9 +446,8 @@ export class StandardController implements IController {
             !hash;
         const correlationId = useNative
             ? request?.correlationId
-            : this.browserStorage.getTemporaryCache(
-                  TemporaryCacheKeys.CORRELATION_ID,
-                  true
+            : this.tempCache.getItem(
+                  TemporaryCacheKeys.CORRELATION_ID
               ) || "";
         const rootMeasurement = this.performanceClient.startMeasurement(
             PerformanceEvents.AcquireTokenRedirect,
@@ -636,7 +641,7 @@ export class StandardController implements IController {
         const isLoggedIn = this.getAllAccounts().length > 0;
         try {
             BrowserUtils.redirectPreflightCheck(this.initialized, this.config);
-            this.browserStorage.setInteractionInProgress(true);
+            this.tempCache.setInteractionInProgress(true);
 
             if (isLoggedIn) {
                 this.eventHandler.emitEvent(
@@ -688,7 +693,7 @@ export class StandardController implements IController {
                                 this.createRedirectClient(correlationId);
                             return redirectClient.acquireToken(request);
                         }
-                        this.browserStorage.setInteractionInProgress(false);
+                        this.tempCache.setInteractionInProgress(false);
                         throw e;
                     });
             } else {
@@ -744,7 +749,7 @@ export class StandardController implements IController {
         try {
             this.logger.verbose("acquireTokenPopup called", correlationId);
             preflightCheck(this.initialized, atPopupMeasurement);
-            this.browserStorage.setInteractionInProgress(true);
+            this.tempCache.setInteractionInProgress(true);
         } catch (e) {
             // Since this function is syncronous we need to reject
             return Promise.reject(e);
@@ -777,7 +782,7 @@ export class StandardController implements IController {
                 ApiId.acquireTokenPopup
             )
                 .then((response) => {
-                    this.browserStorage.setInteractionInProgress(false);
+                    this.tempCache.setInteractionInProgress(false);
                     atPopupMeasurement.end({
                         success: true,
                         isNativeBroker: true,
@@ -802,7 +807,7 @@ export class StandardController implements IController {
                             this.createPopupClient(correlationId);
                         return popupClient.acquireToken(request);
                     }
-                    this.browserStorage.setInteractionInProgress(false);
+                    this.tempCache.setInteractionInProgress(false);
                     throw e;
                 });
         } else {
@@ -1318,7 +1323,7 @@ export class StandardController implements IController {
     async logoutRedirect(logoutRequest?: EndSessionRequest): Promise<void> {
         const correlationId = this.getRequestCorrelationId(logoutRequest);
         BrowserUtils.redirectPreflightCheck(this.initialized, this.config);
-        this.browserStorage.setInteractionInProgress(true);
+        this.tempCache.setInteractionInProgress(true);
 
         const redirectClient = this.createRedirectClient(correlationId);
         return redirectClient.logout(logoutRequest);
@@ -1332,7 +1337,7 @@ export class StandardController implements IController {
         try {
             const correlationId = this.getRequestCorrelationId(logoutRequest);
             BrowserUtils.preflightCheck(this.initialized);
-            this.browserStorage.setInteractionInProgress(true);
+            this.tempCache.setInteractionInProgress(true);
 
             const popupClient = this.createPopupClient(correlationId);
             return popupClient.logout(logoutRequest);

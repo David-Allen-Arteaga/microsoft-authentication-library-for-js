@@ -75,6 +75,7 @@ import { SilentCacheClient } from "./SilentCacheClient.js";
 import { AuthenticationResult } from "../response/AuthenticationResult.js";
 import { base64Decode } from "../encode/Base64Decode.js";
 import { version } from "../packageMetadata.js";
+import { TemporaryCache } from "../cache/TemporaryCache.js";
 
 export class NativeInteractionClient extends BaseInteractionClient {
     protected apiId: ApiId;
@@ -82,6 +83,7 @@ export class NativeInteractionClient extends BaseInteractionClient {
     protected nativeMessageHandler: NativeMessageHandler;
     protected silentCacheClient: SilentCacheClient;
     protected nativeStorageManager: BrowserCacheManager;
+    protected tempCache: TemporaryCache;
     protected skus: string;
     protected serverTelemetryManager: ServerTelemetryManager;
 
@@ -114,6 +116,7 @@ export class NativeInteractionClient extends BaseInteractionClient {
         this.accountId = accountId;
         this.nativeMessageHandler = provider;
         this.nativeStorageManager = nativeStorageImpl;
+        this.tempCache = new TemporaryCache(config.auth.clientId, config.cache);
         this.silentCacheClient = new SilentCacheClient(
             config,
             this.nativeStorageManager,
@@ -354,10 +357,9 @@ export class NativeInteractionClient extends BaseInteractionClient {
                 }
             }
         }
-        this.browserStorage.setTemporaryCache(
+        this.tempCache.setItem(
             TemporaryCacheKeys.NATIVE_REQUEST,
-            JSON.stringify(nativeRequest),
-            true
+            JSON.stringify(nativeRequest)
         );
 
         const navigationOptions: NavigationOptions = {
@@ -387,7 +389,7 @@ export class NativeInteractionClient extends BaseInteractionClient {
         this.logger.trace(
             "NativeInteractionClient - handleRedirectPromise called."
         );
-        if (!this.browserStorage.isInteractionInProgress(true)) {
+        if (!this.tempCache.isInteractionInProgress(true)) {
             this.logger.info(
                 "handleRedirectPromise called but there is no interaction in progress, returning null."
             );
@@ -416,11 +418,9 @@ export class NativeInteractionClient extends BaseInteractionClient {
             );
         }
 
-        this.browserStorage.removeItem(
-            this.browserStorage.generateCacheKey(
+        this.tempCache.removeItem(
                 TemporaryCacheKeys.NATIVE_REQUEST
-            )
-        );
+            );
 
         const messageBody: NativeExtensionRequestBody = {
             method: NativeExtensionMethod.GetToken,
@@ -441,12 +441,12 @@ export class NativeInteractionClient extends BaseInteractionClient {
                 request,
                 reqTimestamp
             );
-            this.browserStorage.setInteractionInProgress(false);
+            this.tempCache.setInteractionInProgress(false);
             const res = await result;
             this.serverTelemetryManager.clearNativeBrokerErrorCode();
             return res;
         } catch (e) {
-            this.browserStorage.setInteractionInProgress(false);
+            this.tempCache.setInteractionInProgress(false);
             throw e;
         }
     }
