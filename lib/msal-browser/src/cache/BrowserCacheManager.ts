@@ -6,8 +6,6 @@
 import {
     Constants,
     PersistentCacheKeys,
-    StringUtils,
-    CommonAuthorizationCodeRequest,
     ICrypto,
     AccountEntity,
     IdTokenEntity,
@@ -17,15 +15,11 @@ import {
     CacheManager,
     ServerTelemetryEntity,
     ThrottlingEntity,
-    ProtocolUtils,
     Logger,
     AuthorityMetadataEntity,
     DEFAULT_CRYPTO_IMPLEMENTATION,
     AccountInfo,
     ActiveAccountFilters,
-    CcsCredential,
-    CcsCredentialType,
-    AuthToken,
     ValidCredentialType,
     TokenKeys,
     CredentialType,
@@ -42,12 +36,7 @@ import {
 } from "@azure/msal-common/browser";
 import { CacheOptions } from "../config/Configuration.js";
 import {
-    createBrowserAuthError,
-    BrowserAuthErrorCodes,
-} from "../error/BrowserAuthError.js";
-import {
     BrowserCacheLocation,
-    InteractionType,
     TemporaryCacheKeys,
     InMemoryCacheKeys,
     StaticCacheKeys,
@@ -56,7 +45,6 @@ import { LocalStorage } from "./LocalStorage.js";
 import { SessionStorage } from "./SessionStorage.js";
 import { MemoryStorage } from "./MemoryStorage.js";
 import { IWindowStorage } from "./IWindowStorage.js";
-import { extractBrowserRequestState } from "../utils/BrowserProtocolUtils.js";
 import { NativeTokenRequest } from "../broker/nativeBroker/NativeRequest.js";
 import { AuthenticationResult } from "../response/AuthenticationResult.js";
 import { SilentRequest } from "../request/SilentRequest.js";
@@ -64,8 +52,9 @@ import { SsoSilentRequest } from "../request/SsoSilentRequest.js";
 import { RedirectRequest } from "../request/RedirectRequest.js";
 import { PopupRequest } from "../request/PopupRequest.js";
 import { base64Decode } from "../encode/Base64Decode.js";
-import { base64Encode } from "../encode/Base64Encode.js";
 import { CookieStorage } from "./CookieStorage.js";
+import { TemporaryCache } from "./TemporaryCache.js";
+import { generateCacheKey } from "./CacheHelpers.js";
 
 /**
  * This class implements the cache storage interface for MSAL through browser local or session storage.
@@ -80,7 +69,7 @@ export class BrowserCacheManager extends CacheManager {
     // Internal in-memory storage object used for data used by msal that does not need to persist across page loads
     protected internalStorage: MemoryStorage<string>;
     // Temporary cache
-    protected temporaryCacheStorage: IWindowStorage<string>;
+    protected tempCache: TemporaryCache;
     // Cookie storage
     protected cookieStorage: CookieStorage;
     // Logger instance
@@ -103,14 +92,11 @@ export class BrowserCacheManager extends CacheManager {
         this.browserStorage = this.setupBrowserStorage(
             this.cacheConfig.cacheLocation
         );
-        this.temporaryCacheStorage = this.setupBrowserStorage(
-            this.cacheConfig.temporaryCacheLocation
-        );
+        this.tempCache = new TemporaryCache(clientId, cacheConfig);
         this.cookieStorage = new CookieStorage();
 
         // Migrate cache entries from older versions of MSAL.
         if (cacheConfig.cacheMigrationEnabled) {
-            this.migrateCacheEntries();
             this.createKeyMaps();
         }
 
@@ -139,42 +125,6 @@ export class BrowserCacheManager extends CacheManager {
         }
         this.cacheConfig.cacheLocation = BrowserCacheLocation.MemoryStorage;
         return new MemoryStorage();
-    }
-
-    /**
-     * Migrate all old cache entries to new schema. No rollback supported.
-     * @param storeAuthStateInCookie
-     */
-    protected migrateCacheEntries(): void {
-        const idTokenKey = `${Constants.CACHE_PREFIX}.${PersistentCacheKeys.ID_TOKEN}`;
-        const clientInfoKey = `${Constants.CACHE_PREFIX}.${PersistentCacheKeys.CLIENT_INFO}`;
-        const errorKey = `${Constants.CACHE_PREFIX}.${PersistentCacheKeys.ERROR}`;
-        const errorDescKey = `${Constants.CACHE_PREFIX}.${PersistentCacheKeys.ERROR_DESC}`;
-
-        const idTokenValue = this.browserStorage.getItem(idTokenKey);
-        const clientInfoValue = this.browserStorage.getItem(clientInfoKey);
-        const errorValue = this.browserStorage.getItem(errorKey);
-        const errorDescValue = this.browserStorage.getItem(errorDescKey);
-
-        const values = [
-            idTokenValue,
-            clientInfoValue,
-            errorValue,
-            errorDescValue,
-        ];
-        const keysToMigrate = [
-            PersistentCacheKeys.ID_TOKEN,
-            PersistentCacheKeys.CLIENT_INFO,
-            PersistentCacheKeys.ERROR,
-            PersistentCacheKeys.ERROR_DESC,
-        ];
-
-        keysToMigrate.forEach((cacheKey: string, index: number) => {
-            const value = values[index];
-            if (value) {
-                this.setTemporaryCache(cacheKey, value, true);
-            }
-        });
     }
 
     /**
@@ -977,8 +927,9 @@ export class BrowserCacheManager extends CacheManager {
      * Gets the active account
      */
     getActiveAccount(): AccountInfo | null {
-        const activeAccountKeyFilters = this.generateCacheKey(
-            PersistentCacheKeys.ACTIVE_ACCOUNT_FILTERS
+        const activeAccountKeyFilters = generateCacheKey(
+            PersistentCacheKeys.ACTIVE_ACCOUNT_FILTERS,
+            this.clientId
         );
         const activeAccountValueFilters = this.getItem(activeAccountKeyFilters);
         if (!activeAccountValueFilters) {
@@ -986,8 +937,9 @@ export class BrowserCacheManager extends CacheManager {
             this.logger.trace(
                 "BrowserCacheManager.getActiveAccount: No active account filters cache schema found, looking for legacy schema"
             );
-            const activeAccountKeyLocal = this.generateCacheKey(
-                PersistentCacheKeys.ACTIVE_ACCOUNT
+            const activeAccountKeyLocal = generateCacheKey(
+                PersistentCacheKeys.ACTIVE_ACCOUNT,
+                this.clientId
             );
             const activeAccountValueLocal = this.getItem(activeAccountKeyLocal);
             if (!activeAccountValueLocal) {
@@ -1035,11 +987,13 @@ export class BrowserCacheManager extends CacheManager {
      * @param account
      */
     setActiveAccount(account: AccountInfo | null): void {
-        const activeAccountKey = this.generateCacheKey(
-            PersistentCacheKeys.ACTIVE_ACCOUNT_FILTERS
+        const activeAccountKey = generateCacheKey(
+            PersistentCacheKeys.ACTIVE_ACCOUNT_FILTERS,
+            this.clientId
         );
-        const activeAccountKeyLocal = this.generateCacheKey(
-            PersistentCacheKeys.ACTIVE_ACCOUNT
+        const activeAccountKeyLocal = generateCacheKey(
+            PersistentCacheKeys.ACTIVE_ACCOUNT,
+            this.clientId
         );
         if (account) {
             this.logger.verbose("setActiveAccount: Active account set");
@@ -1110,97 +1064,11 @@ export class BrowserCacheManager extends CacheManager {
     }
 
     /**
-     * Gets cache item with given key.
-     * Will retrieve from cookies if storeAuthStateInCookie is set to true.
-     * @param key
-     */
-    getTemporaryCache(cacheKey: string, generateKey?: boolean): string | null {
-        const key = generateKey ? this.generateCacheKey(cacheKey) : cacheKey;
-        if (this.cacheConfig.storeAuthStateInCookie) {
-            const itemCookie = this.cookieStorage.getItem(key);
-            if (itemCookie) {
-                this.logger.trace(
-                    "BrowserCacheManager.getTemporaryCache: storeAuthStateInCookies set to true, retrieving from cookies"
-                );
-                return itemCookie;
-            }
-        }
-
-        const value = this.temporaryCacheStorage.getItem(key);
-        if (!value) {
-            // If temp cache item not found in session/memory, check local storage for items set by old versions
-            if (
-                this.cacheConfig.cacheLocation ===
-                BrowserCacheLocation.LocalStorage
-            ) {
-                const item = this.browserStorage.getItem(key);
-                if (item) {
-                    this.logger.trace(
-                        "BrowserCacheManager.getTemporaryCache: Temporary cache item found in local storage"
-                    );
-                    return item;
-                }
-            }
-            this.logger.trace(
-                "BrowserCacheManager.getTemporaryCache: No cache item found in local storage"
-            );
-            return null;
-        }
-        this.logger.trace(
-            "BrowserCacheManager.getTemporaryCache: Temporary cache item returned"
-        );
-        return value;
-    }
-
-    /**
-     * Sets the cache item with the key and value given.
-     * Stores in cookie if storeAuthStateInCookie is set to true.
-     * This can cause cookie overflow if used incorrectly.
-     * @param key
-     * @param value
-     */
-    setTemporaryCache(
-        cacheKey: string,
-        value: string,
-        generateKey?: boolean
-    ): void {
-        const key = generateKey ? this.generateCacheKey(cacheKey) : cacheKey;
-
-        this.temporaryCacheStorage.setItem(key, value);
-        if (this.cacheConfig.storeAuthStateInCookie) {
-            this.logger.trace(
-                "BrowserCacheManager.setTemporaryCache: storeAuthStateInCookie set to true, setting item cookie"
-            );
-            this.cookieStorage.setItem(
-                key,
-                value,
-                undefined,
-                this.cacheConfig.secureCookies
-            );
-        }
-    }
-
-    /**
      * Removes the cache item with the given key.
      * @param key
      */
     removeItem(key: string): void {
         this.browserStorage.removeItem(key);
-    }
-
-    /**
-     * Removes the temporary cache item with the given key.
-     * Will also clear the cookie item if storeAuthStateInCookie is set to true.
-     * @param key
-     */
-    removeTemporaryItem(key: string): void {
-        this.temporaryCacheStorage.removeItem(key);
-        if (this.cacheConfig.storeAuthStateInCookie) {
-            this.logger.trace(
-                "BrowserCacheManager.removeItem: storeAuthStateInCookie is true, clearing item cookie"
-            );
-            this.cookieStorage.removeItem(key);
-        }
     }
 
     /**
@@ -1219,14 +1087,7 @@ export class BrowserCacheManager extends CacheManager {
         this.removeAppMetadata();
 
         // Remove temp storage first to make sure any cookies are cleared
-        this.temporaryCacheStorage.getKeys().forEach((cacheKey: string) => {
-            if (
-                cacheKey.indexOf(Constants.CACHE_PREFIX) !== -1 ||
-                cacheKey.indexOf(this.clientId) !== -1
-            ) {
-                this.removeTemporaryItem(cacheKey);
-            }
-        });
+        this.tempCache.clear();
 
         // Removes all remaining MSAL cache items
         this.browserStorage.getKeys().forEach((cacheKey: string) => {
@@ -1280,291 +1141,12 @@ export class BrowserCacheManager extends CacheManager {
     }
 
     /**
-     * Prepend msal.<client-id> to each key; Skip for any JSON object as Key (defined schemas do not need the key appended: AccessToken Keys or the upcoming schema)
-     * @param key
-     * @param addInstanceId
-     */
-    generateCacheKey(key: string): string {
-        const generatedKey = this.validateAndParseJson(key);
-        if (!generatedKey) {
-            if (
-                StringUtils.startsWith(key, Constants.CACHE_PREFIX) ||
-                StringUtils.startsWith(key, PersistentCacheKeys.ADAL_ID_TOKEN)
-            ) {
-                return key;
-            }
-            return `${Constants.CACHE_PREFIX}.${this.clientId}.${key}`;
-        }
-
-        return JSON.stringify(key);
-    }
-
-    /**
-     * Create authorityKey to cache authority
-     * @param state
-     */
-    generateAuthorityKey(stateString: string): string {
-        const {
-            libraryState: { id: stateId },
-        } = ProtocolUtils.parseRequestState(this.cryptoImpl, stateString);
-
-        return this.generateCacheKey(
-            `${TemporaryCacheKeys.AUTHORITY}.${stateId}`
-        );
-    }
-
-    /**
-     * Create Nonce key to cache nonce
-     * @param state
-     */
-    generateNonceKey(stateString: string): string {
-        const {
-            libraryState: { id: stateId },
-        } = ProtocolUtils.parseRequestState(this.cryptoImpl, stateString);
-
-        return this.generateCacheKey(
-            `${TemporaryCacheKeys.NONCE_IDTOKEN}.${stateId}`
-        );
-    }
-
-    /**
-     * Creates full cache key for the request state
-     * @param stateString State string for the request
-     */
-    generateStateKey(stateString: string): string {
-        // Use the library state id to key temp storage for uniqueness for multiple concurrent requests
-        const {
-            libraryState: { id: stateId },
-        } = ProtocolUtils.parseRequestState(this.cryptoImpl, stateString);
-        return this.generateCacheKey(
-            `${TemporaryCacheKeys.REQUEST_STATE}.${stateId}`
-        );
-    }
-
-    /**
-     * Gets the cached authority based on the cached state. Returns empty if no cached state found.
-     */
-    getCachedAuthority(cachedState: string): string | null {
-        const stateCacheKey = this.generateStateKey(cachedState);
-        const state = this.getTemporaryCache(stateCacheKey);
-        if (!state) {
-            return null;
-        }
-
-        const authorityCacheKey = this.generateAuthorityKey(state);
-        return this.getTemporaryCache(authorityCacheKey);
-    }
-
-    /**
-     * Updates account, authority, and state in cache
-     * @param serverAuthenticationRequest
-     * @param account
-     */
-    updateCacheEntries(
-        state: string,
-        nonce: string,
-        authorityInstance: string,
-        loginHint: string,
-        account: AccountInfo | null
-    ): void {
-        this.logger.trace("BrowserCacheManager.updateCacheEntries called");
-        // Cache the request state
-        const stateCacheKey = this.generateStateKey(state);
-        this.setTemporaryCache(stateCacheKey, state, false);
-
-        // Cache the nonce
-        const nonceCacheKey = this.generateNonceKey(state);
-        this.setTemporaryCache(nonceCacheKey, nonce, false);
-
-        // Cache authorityKey
-        const authorityCacheKey = this.generateAuthorityKey(state);
-        this.setTemporaryCache(authorityCacheKey, authorityInstance, false);
-
-        if (account) {
-            const ccsCredential: CcsCredential = {
-                credential: account.homeAccountId,
-                type: CcsCredentialType.HOME_ACCOUNT_ID,
-            };
-            this.setTemporaryCache(
-                TemporaryCacheKeys.CCS_CREDENTIAL,
-                JSON.stringify(ccsCredential),
-                true
-            );
-        } else if (loginHint) {
-            const ccsCredential: CcsCredential = {
-                credential: loginHint,
-                type: CcsCredentialType.UPN,
-            };
-            this.setTemporaryCache(
-                TemporaryCacheKeys.CCS_CREDENTIAL,
-                JSON.stringify(ccsCredential),
-                true
-            );
-        }
-    }
-
-    /**
-     * Reset all temporary cache items
-     * @param state
-     */
-    resetRequestCache(state: string): void {
-        this.logger.trace("BrowserCacheManager.resetRequestCache called");
-        // check state and remove associated cache items
-        if (state) {
-            this.temporaryCacheStorage.getKeys().forEach((key) => {
-                if (key.indexOf(state) !== -1) {
-                    this.removeTemporaryItem(key);
-                }
-            });
-
-            // delete generic interactive request parameters
-            this.removeTemporaryItem(this.generateStateKey(state));
-            this.removeTemporaryItem(this.generateNonceKey(state));
-            this.removeTemporaryItem(this.generateAuthorityKey(state));
-        }
-        this.removeTemporaryItem(
-            this.generateCacheKey(TemporaryCacheKeys.REQUEST_PARAMS)
-        );
-        this.removeTemporaryItem(
-            this.generateCacheKey(TemporaryCacheKeys.ORIGIN_URI)
-        );
-        this.removeTemporaryItem(
-            this.generateCacheKey(TemporaryCacheKeys.URL_HASH)
-        );
-        this.removeTemporaryItem(
-            this.generateCacheKey(TemporaryCacheKeys.CORRELATION_ID)
-        );
-        this.removeTemporaryItem(
-            this.generateCacheKey(TemporaryCacheKeys.CCS_CREDENTIAL)
-        );
-        this.removeTemporaryItem(
-            this.generateCacheKey(TemporaryCacheKeys.NATIVE_REQUEST)
-        );
-        this.setInteractionInProgress(false);
-    }
-
-    /**
-     * Removes temporary cache for the provided state
-     * @param stateString
-     */
-    cleanRequestByState(stateString: string): void {
-        this.logger.trace("BrowserCacheManager.cleanRequestByState called");
-        // Interaction is completed - remove interaction status.
-        if (stateString) {
-            const stateKey = this.generateStateKey(stateString);
-            const cachedState = this.temporaryCacheStorage.getItem(stateKey);
-            this.logger.infoPii(
-                `BrowserCacheManager.cleanRequestByState: Removing temporary cache items for state: ${cachedState}`
-            );
-            this.resetRequestCache(cachedState || Constants.EMPTY_STRING);
-        }
-    }
-
-    /**
-     * Looks in temporary cache for any state values with the provided interactionType and removes all temporary cache items for that state
-     * Used in scenarios where temp cache needs to be cleaned but state is not known, such as clicking browser back button.
-     * @param interactionType
-     */
-    cleanRequestByInteractionType(interactionType: InteractionType): void {
-        this.logger.trace(
-            "BrowserCacheManager.cleanRequestByInteractionType called"
-        );
-        // Loop through all keys to find state key
-        this.temporaryCacheStorage.getKeys().forEach((key) => {
-            // If this key is not the state key, move on
-            if (key.indexOf(TemporaryCacheKeys.REQUEST_STATE) === -1) {
-                return;
-            }
-
-            // Retrieve state value, return if not a valid value
-            const stateValue = this.temporaryCacheStorage.getItem(key);
-            if (!stateValue) {
-                return;
-            }
-            // Extract state and ensure it matches given InteractionType, then clean request cache
-            const parsedState = extractBrowserRequestState(
-                this.cryptoImpl,
-                stateValue
-            );
-            if (
-                parsedState &&
-                parsedState.interactionType === interactionType
-            ) {
-                this.logger.infoPii(
-                    `BrowserCacheManager.cleanRequestByInteractionType: Removing temporary cache items for state: ${stateValue}`
-                );
-                this.resetRequestCache(stateValue);
-            }
-        });
-        this.setInteractionInProgress(false);
-    }
-
-    cacheCodeRequest(authCodeRequest: CommonAuthorizationCodeRequest): void {
-        this.logger.trace("BrowserCacheManager.cacheCodeRequest called");
-
-        const encodedValue = base64Encode(JSON.stringify(authCodeRequest));
-        this.setTemporaryCache(
-            TemporaryCacheKeys.REQUEST_PARAMS,
-            encodedValue,
-            true
-        );
-    }
-
-    /**
-     * Gets the token exchange parameters from the cache. Throws an error if nothing is found.
-     */
-    getCachedRequest(state: string): CommonAuthorizationCodeRequest {
-        this.logger.trace("BrowserCacheManager.getCachedRequest called");
-        // Get token request from cache and parse as TokenExchangeParameters.
-        const encodedTokenRequest = this.getTemporaryCache(
-            TemporaryCacheKeys.REQUEST_PARAMS,
-            true
-        );
-        if (!encodedTokenRequest) {
-            throw createBrowserAuthError(
-                BrowserAuthErrorCodes.noTokenRequestCacheError
-            );
-        }
-
-        let parsedRequest: CommonAuthorizationCodeRequest;
-        try {
-            parsedRequest = JSON.parse(base64Decode(encodedTokenRequest));
-        } catch (e) {
-            this.logger.errorPii(`Attempted to parse: ${encodedTokenRequest}`);
-            this.logger.error(
-                `Parsing cached token request threw with error: ${e}`
-            );
-            throw createBrowserAuthError(
-                BrowserAuthErrorCodes.unableToParseTokenRequestCacheError
-            );
-        }
-        this.removeTemporaryItem(
-            this.generateCacheKey(TemporaryCacheKeys.REQUEST_PARAMS)
-        );
-
-        // Get cached authority and use if no authority is cached with request.
-        if (!parsedRequest.authority) {
-            const authorityCacheKey: string = this.generateAuthorityKey(state);
-            const cachedAuthority = this.getTemporaryCache(authorityCacheKey);
-            if (!cachedAuthority) {
-                throw createBrowserAuthError(
-                    BrowserAuthErrorCodes.noCachedAuthorityError
-                );
-            }
-            parsedRequest.authority = cachedAuthority;
-        }
-
-        return parsedRequest;
-    }
-
-    /**
      * Gets cached native request for redirect flows
      */
     getCachedNativeRequest(): NativeTokenRequest | null {
         this.logger.trace("BrowserCacheManager.getCachedNativeRequest called");
-        const cachedRequest = this.getTemporaryCache(
-            TemporaryCacheKeys.NATIVE_REQUEST,
-            true
+        const cachedRequest = this.tempCache.getItem(
+            TemporaryCacheKeys.NATIVE_REQUEST
         );
         if (!cachedRequest) {
             this.logger.trace(
@@ -1584,93 +1166,6 @@ export class BrowserCacheManager extends CacheManager {
         }
 
         return parsedRequest;
-    }
-
-    isInteractionInProgress(matchClientId?: boolean): boolean {
-        const clientId = this.getInteractionInProgress();
-
-        if (matchClientId) {
-            return clientId === this.clientId;
-        } else {
-            return !!clientId;
-        }
-    }
-
-    getInteractionInProgress(): string | null {
-        const key = `${Constants.CACHE_PREFIX}.${TemporaryCacheKeys.INTERACTION_STATUS_KEY}`;
-        return this.getTemporaryCache(key, false);
-    }
-
-    setInteractionInProgress(inProgress: boolean): void {
-        // Ensure we don't overwrite interaction in progress for a different clientId
-        const key = `${Constants.CACHE_PREFIX}.${TemporaryCacheKeys.INTERACTION_STATUS_KEY}`;
-        if (inProgress) {
-            if (this.getInteractionInProgress()) {
-                throw createBrowserAuthError(
-                    BrowserAuthErrorCodes.interactionInProgress
-                );
-            } else {
-                // No interaction is in progress
-                this.setTemporaryCache(key, this.clientId, false);
-            }
-        } else if (
-            !inProgress &&
-            this.getInteractionInProgress() === this.clientId
-        ) {
-            this.removeTemporaryItem(key);
-        }
-    }
-
-    /**
-     * Returns username retrieved from ADAL or MSAL v1 idToken
-     * @deprecated
-     */
-    getLegacyLoginHint(): string | null {
-        // Only check for adal/msal token if no SSO params are being used
-        const adalIdTokenString = this.getTemporaryCache(
-            PersistentCacheKeys.ADAL_ID_TOKEN
-        );
-        if (adalIdTokenString) {
-            this.browserStorage.removeItem(PersistentCacheKeys.ADAL_ID_TOKEN);
-            this.logger.verbose("Cached ADAL id token retrieved.");
-        }
-
-        // Check for cached MSAL v1 id token
-        const msalIdTokenString = this.getTemporaryCache(
-            PersistentCacheKeys.ID_TOKEN,
-            true
-        );
-        if (msalIdTokenString) {
-            this.browserStorage.removeItem(
-                this.generateCacheKey(PersistentCacheKeys.ID_TOKEN)
-            );
-            this.logger.verbose("Cached MSAL.js v1 id token retrieved");
-        }
-
-        const cachedIdTokenString = msalIdTokenString || adalIdTokenString;
-        if (cachedIdTokenString) {
-            const idTokenClaims = AuthToken.extractTokenClaims(
-                cachedIdTokenString,
-                base64Decode
-            );
-            if (idTokenClaims.preferred_username) {
-                this.logger.verbose(
-                    "No SSO params used and ADAL/MSAL v1 token retrieved, setting ADAL/MSAL v1 preferred_username as loginHint"
-                );
-                return idTokenClaims.preferred_username;
-            } else if (idTokenClaims.upn) {
-                this.logger.verbose(
-                    "No SSO params used and ADAL/MSAL v1 token retrieved, setting ADAL/MSAL v1 upn as loginHint"
-                );
-                return idTokenClaims.upn;
-            } else {
-                this.logger.verbose(
-                    "No SSO params used and ADAL/MSAL v1 token retrieved, however, no account hint claim found. Enable preferred_username or upn id token claim to get SSO."
-                );
-            }
-        }
-
-        return null;
     }
 
     /**

@@ -47,6 +47,7 @@ import { PopupWindowAttributes } from "../request/PopupWindowAttributes.js";
 import { EventError } from "../event/EventMessage.js";
 import { AuthenticationResult } from "../response/AuthenticationResult.js";
 import * as ResponseHandler from "../response/ResponseHandler.js";
+import { TemporaryCache } from "../cache/TemporaryCache.js";
 
 export type PopupParams = {
     popup?: Window | null;
@@ -58,6 +59,7 @@ export type PopupParams = {
 export class PopupClient extends StandardInteractionClient {
     private currentWindow: Window | undefined;
     protected nativeStorage: BrowserCacheManager;
+    private tempCache: TemporaryCache;
 
     constructor(
         config: BrowserConfiguration,
@@ -85,6 +87,7 @@ export class PopupClient extends StandardInteractionClient {
         // Properly sets this reference for the unload event.
         this.unloadWindow = this.unloadWindow.bind(this);
         this.nativeStorage = nativeStorageImpl;
+        this.tempCache = new TemporaryCache(config.auth.clientId, config.cache)
     }
 
     /**
@@ -497,7 +500,7 @@ export class PopupClient extends StandardInteractionClient {
                 (e as AuthError).setCorrelationId(this.correlationId);
                 serverTelemetryManager.cacheFailedRequest(e);
             }
-            this.browserStorage.setInteractionInProgress(false);
+            this.tempCache.setInteractionInProgress(false);
             this.eventHandler.emitEvent(
                 EventType.LOGOUT_FAILURE,
                 InteractionType.Popup,
@@ -654,7 +657,7 @@ export class PopupClient extends StandardInteractionClient {
             this.logger.error(
                 "error opening popup " + (e as AuthError).message
             );
-            this.browserStorage.setInteractionInProgress(false);
+            this.tempCache.setInteractionInProgress(false);
             throw createBrowserAuthError(
                 BrowserAuthErrorCodes.popupWindowError
             );
@@ -745,9 +748,7 @@ export class PopupClient extends StandardInteractionClient {
      * Event callback to unload main window.
      */
     unloadWindow(e: Event): void {
-        this.browserStorage.cleanRequestByInteractionType(
-            InteractionType.Popup
-        );
+        this.tempCache.clear();
         if (this.currentWindow) {
             this.currentWindow.close();
         }
@@ -770,7 +771,7 @@ export class PopupClient extends StandardInteractionClient {
         );
 
         // Interaction is completed - remove interaction status.
-        this.browserStorage.setInteractionInProgress(false);
+        this.tempCache.setInteractionInProgress(false);
     }
 
     /**

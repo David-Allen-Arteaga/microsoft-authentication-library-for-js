@@ -79,20 +79,15 @@ export type HTTP_REQUEST_TYPE =
  */
 export const TemporaryCacheKeys = {
     AUTHORITY: "authority",
-    ACQUIRE_TOKEN_ACCOUNT: "acquireToken.account",
-    SESSION_STATE: "session.state",
     REQUEST_STATE: "request.state",
     NONCE_IDTOKEN: "nonce.id_token",
     ORIGIN_URI: "request.origin",
-    RENEW_STATUS: "token.renew.status",
     URL_HASH: "urlHash",
     REQUEST_PARAMS: "request.params",
-    SCOPES: "scopes",
     INTERACTION_STATUS_KEY: "interaction.status",
     CCS_CREDENTIAL: "ccs.credential",
     CORRELATION_ID: "request.correlationId",
     NATIVE_REQUEST: "request.native",
-    REDIRECT_CONTEXT: "request.redirect.context",
 } as const;
 export type TemporaryCacheKeys =
     (typeof TemporaryCacheKeys)[keyof typeof TemporaryCacheKeys];
