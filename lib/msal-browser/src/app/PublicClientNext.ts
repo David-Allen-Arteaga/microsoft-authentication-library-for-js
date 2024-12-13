@@ -391,8 +391,8 @@ export class PublicClientNext implements IPublicClientApplication {
      * Sets the account to use as the active account. If no account is passed to the acquireToken APIs, then MSAL will use this active account.
      * @param account
      */
-    setActiveAccount(account: AccountInfo | null): void {
-        this.controller.setActiveAccount(account);
+    async setActiveAccount(account: AccountInfo | null): Promise<void> {
+        await this.controller.setActiveAccount(account);
     }
 
     /**

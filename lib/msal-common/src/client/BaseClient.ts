@@ -167,7 +167,7 @@ export abstract class BaseClient {
             response.status !== 429
         ) {
             // Telemetry data successfully logged by server, clear Telemetry cache
-            this.config.serverTelemetryManager.clearTelemetryCache();
+            await this.config.serverTelemetryManager.clearTelemetryCache();
         }
 
         return response;
@@ -243,7 +243,7 @@ export abstract class BaseClient {
             }
         }
 
-        ThrottlingUtils.postProcess(this.cacheManager, thumbprint, response);
+        await ThrottlingUtils.postProcess(this.cacheManager, thumbprint, response);
 
         return response;
     }

@@ -189,7 +189,7 @@ export class SilentFlowClient extends BaseClient {
         this.setCacheOutcome(lastCacheOutcome, request.correlationId);
 
         if (this.config.serverTelemetryManager) {
-            this.config.serverTelemetryManager.incrementCacheHits();
+            await this.config.serverTelemetryManager.incrementCacheHits();
         }
 
         return [

@@ -337,6 +337,9 @@ export class StandardController implements IController {
             return;
         }
 
+        await this.browserStorage.initialize();
+        await this.nativeInternalStorage.initialize();
+
         const initCorrelationId =
             request?.correlationId || this.getRequestCorrelationId();
         const allowNativeBroker = this.config.system.allowNativeBroker;
@@ -1442,15 +1445,15 @@ export class StandardController implements IController {
      * Sets the account to use as the active account. If no account is passed to the acquireToken APIs, then MSAL will use this active account.
      * @param account
      */
-    setActiveAccount(account: AccountInfo | null): void {
-        AccountManager.setActiveAccount(account, this.browserStorage);
+    async setActiveAccount(account: AccountInfo | null): Promise<void> {
+        return this.browserStorage.setActiveAccount(account);
     }
 
     /**
      * Gets the currently active account
      */
     getActiveAccount(): AccountInfo | null {
-        return AccountManager.getActiveAccount(this.browserStorage);
+        return this.browserStorage.getActiveAccount();
     }
 
     // #endregion
@@ -1477,7 +1480,7 @@ export class StandardController implements IController {
             result.cloudGraphHostName,
             result.msGraphHost
         );
-        this.browserStorage.setAccount(accountEntity);
+        await this.browserStorage.setAccount(accountEntity);
 
         if (result.fromNativeBroker) {
             this.logger.verbose(

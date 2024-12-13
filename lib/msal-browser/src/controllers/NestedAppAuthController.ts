@@ -127,18 +127,6 @@ export class NestedAppAuthController implements IController {
             this.browserCrypto,
             this.logger
         );
-
-        // Set the active account if available
-        const accountContext = this.bridgeProxy.getAccountContext();
-        if (accountContext) {
-            const cachedAccount = AccountManager.getAccount(
-                accountContext,
-                this.logger,
-                this.browserStorage
-            );
-
-            AccountManager.setActiveAccount(cachedAccount, this.browserStorage);
-        }
     }
 
     /**
@@ -157,8 +145,20 @@ export class NestedAppAuthController implements IController {
      * Specific implementation of initialize function for NestedAppAuthController
      * @returns
      */
-    initialize(): Promise<void> {
+    async initialize(): Promise<void> {
         // do nothing not required by this controller
+        await this.browserStorage.initialize();
+        // Set the active account if available
+        const accountContext = this.bridgeProxy.getAccountContext();
+        if (accountContext) {
+            const cachedAccount = AccountManager.getAccount(
+                accountContext,
+                this.logger,
+                this.browserStorage
+            );
+
+            await this.browserStorage.setActiveAccount(cachedAccount);
+        }
         return Promise.resolve();
     }
 
@@ -224,7 +224,7 @@ export class NestedAppAuthController implements IController {
             // cache the tokens in the response
             await this.hydrateCache(result, request);
 
-            this.browserStorage.setActiveAccount(result.account);
+            await this.browserStorage.setActiveAccount(result.account);
             this.eventHandler.emitEvent(
                 EventType.ACQUIRE_TOKEN_SUCCESS,
                 InteractionType.Popup,
@@ -318,7 +318,7 @@ export class NestedAppAuthController implements IController {
             // cache the tokens in the response
             await this.hydrateCache(result, request);
 
-            this.browserStorage.setActiveAccount(result.account);
+            await this.browserStorage.setActiveAccount(result.account);
             this.eventHandler.emitEvent(
                 EventType.ACQUIRE_TOKEN_SUCCESS,
                 InteractionType.Silent,
@@ -707,19 +707,19 @@ export class NestedAppAuthController implements IController {
      * Sets the account to use as the active account. If no account is passed to the acquireToken APIs, then MSAL will use this active account.
      * @param account
      */
-    setActiveAccount(account: AccountInfo | null): void {
+    async setActiveAccount(account: AccountInfo | null): Promise<void> {
         /*
          * StandardController uses this to allow the developer to set the active account
          * in the nested app auth scenario the active account is controlled by the app hosting the nested app
          */
-        return AccountManager.setActiveAccount(account, this.browserStorage);
+        return this.browserStorage.setActiveAccount(account);
     }
 
     /**
      * Gets the currently active account
      */
     getActiveAccount(): AccountInfo | null {
-        return AccountManager.getActiveAccount(this.browserStorage);
+        return this.browserStorage.getActiveAccount();
     }
 
     // #endregion
@@ -842,7 +842,7 @@ export class NestedAppAuthController implements IController {
             result.cloudGraphHostName,
             result.msGraphHost
         );
-        this.browserStorage.setAccount(accountEntity);
+        await this.browserStorage.setAccount(accountEntity);
         return this.browserStorage.hydrateCache(result, request);
     }
 }

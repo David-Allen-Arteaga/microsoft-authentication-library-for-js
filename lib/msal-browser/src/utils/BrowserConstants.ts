@@ -87,7 +87,7 @@ export const TemporaryCacheKeys = {
     INTERACTION_STATUS_KEY: "interaction.status",
     CCS_CREDENTIAL: "ccs.credential",
     CORRELATION_ID: "request.correlationId",
-    NATIVE_REQUEST: "request.native",
+    NATIVE_REQUEST: "request.native"
 } as const;
 export type TemporaryCacheKeys =
     (typeof TemporaryCacheKeys)[keyof typeof TemporaryCacheKeys];

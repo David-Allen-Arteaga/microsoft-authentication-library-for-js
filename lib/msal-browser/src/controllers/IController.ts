@@ -96,7 +96,7 @@ export interface IController {
 
     setLogger(logger: Logger): void;
 
-    setActiveAccount(account: AccountInfo | null): void;
+    setActiveAccount(account: AccountInfo | null): Promise<void>;
 
     getActiveAccount(): AccountInfo | null;
 

@@ -162,23 +162,3 @@ export function getAccountByLocalId(
         return null;
     }
 }
-
-/**
- * Sets the account to use as the active account. If no account is passed to the acquireToken APIs, then MSAL will use this active account.
- * @param account
- */
-export function setActiveAccount(
-    account: AccountInfo | null,
-    browserStorage: BrowserCacheManager
-): void {
-    browserStorage.setActiveAccount(account);
-}
-
-/**
- * Gets the currently active account
- */
-export function getActiveAccount(
-    browserStorage: BrowserCacheManager
-): AccountInfo | null {
-    return browserStorage.getActiveAccount();
-}

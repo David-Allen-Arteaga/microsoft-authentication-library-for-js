@@ -65,7 +65,7 @@ export interface IPublicClientApplication {
     getTokenCache(): ITokenCache;
     getLogger(): Logger;
     setLogger(logger: Logger): void;
-    setActiveAccount(account: AccountInfo | null): void;
+    setActiveAccount(account: AccountInfo | null): Promise<void>;
     getActiveAccount(): AccountInfo | null;
     initializeWrapperLibrary(sku: WrapperSKU, version: string): void;
     setNavigationClient(navigationClient: INavigationClient): void;
@@ -213,7 +213,7 @@ export const stubbedPublicClientApplication: IPublicClientApplication = {
     setLogger: () => {
         return;
     },
-    setActiveAccount: () => {
+    setActiveAccount: async () => {
         return;
     },
     getActiveAccount: () => {

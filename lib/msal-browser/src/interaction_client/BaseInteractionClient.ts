@@ -98,7 +98,7 @@ export abstract class BaseInteractionClient {
                 )
             ) {
                 this.logger.verbose("Setting active account to null");
-                this.browserStorage.setActiveAccount(null);
+                await this.browserStorage.setActiveAccount(null);
             }
             // Clear given account.
             try {

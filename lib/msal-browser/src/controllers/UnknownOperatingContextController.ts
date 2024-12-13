@@ -309,7 +309,7 @@ export class UnknownOperatingContextController implements IController {
         blockNonBrowserEnvironment();
     }
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    setActiveAccount(account: AccountInfo | null): void {
+    async setActiveAccount(account: AccountInfo | null): Promise<void> {
         blockAPICallsBeforeInitialize(this.initialized);
         blockNonBrowserEnvironment();
     }

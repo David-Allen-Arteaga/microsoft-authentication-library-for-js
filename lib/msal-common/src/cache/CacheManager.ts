@@ -8,21 +8,18 @@ import {
     CredentialFilter,
     ValidCredentialType,
     AppMetadataFilter,
-    AppMetadataCache,
     TokenKeys,
     TenantProfileFilter,
 } from "./utils/CacheTypes.js";
 import { CacheRecord } from "./entities/CacheRecord.js";
 import {
     CredentialType,
-    APP_METADATA,
     THE_FAMILY_ID,
     AUTHORITY_METADATA_CONSTANTS,
     AuthenticationScheme,
     Separators,
 } from "../utils/Constants.js";
 import { CredentialEntity } from "./entities/CredentialEntity.js";
-import { generateCredentialKey } from "./utils/CacheHelpers.js";
 import { ScopeSet } from "../request/ScopeSet.js";
 import { AccountEntity } from "./entities/AccountEntity.js";
 import { AccessTokenEntity } from "./entities/AccessTokenEntity.js";
@@ -36,7 +33,6 @@ import {
 import {
     AccountInfo,
     TenantProfile,
-    tenantIdMatchesHomeTenant,
     updateAccountTenantProfileData,
 } from "../account/AccountInfo.js";
 import { AppMetadataEntity } from "./entities/AppMetadataEntity.js";
@@ -54,6 +50,7 @@ import { StaticAuthorityOptions } from "../authority/AuthorityOptions.js";
 import { TokenClaims } from "../account/TokenClaims.js";
 import { IPerformanceClient } from "../telemetry/performance/IPerformanceClient.js";
 import { CacheError, CacheErrorCodes } from "../error/CacheError.js";
+import * as CacheHelpers from "./utils/CacheHelpers.js";
 
 /**
  * Interface class which implement cache storage functions used by MSAL to perform validity checks, and store tokens.
@@ -96,12 +93,12 @@ export abstract class CacheManager implements ICacheManager {
      * set account entity in the platform cache
      * @param account
      */
-    abstract setAccount(account: AccountEntity): void;
+    abstract setAccount(account: AccountEntity): Promise<void>;
 
     /**
      * remove account entity from the platform cache if it's outdated
      */
-    abstract removeOutdatedAccount(accountKey: string): void;
+    abstract removeOutdatedAccount(accountKey: string): Promise<void>;
 
     /**
      * fetch the idToken entity from the platform cache
@@ -113,7 +110,7 @@ export abstract class CacheManager implements ICacheManager {
      * set idToken entity to the platform cache
      * @param idToken
      */
-    abstract setIdTokenCredential(idToken: IdTokenEntity): void;
+    abstract setIdTokenCredential(idToken: IdTokenEntity): Promise<void>;
 
     /**
      * fetch the idToken entity from the platform cache
@@ -127,7 +124,7 @@ export abstract class CacheManager implements ICacheManager {
      * set idToken entity to the platform cache
      * @param accessToken
      */
-    abstract setAccessTokenCredential(accessToken: AccessTokenEntity): void;
+    abstract setAccessTokenCredential(accessToken: AccessTokenEntity): Promise<void>;
 
     /**
      * fetch the idToken entity from the platform cache
@@ -141,7 +138,7 @@ export abstract class CacheManager implements ICacheManager {
      * set idToken entity to the platform cache
      * @param refreshToken
      */
-    abstract setRefreshTokenCredential(refreshToken: RefreshTokenEntity): void;
+    abstract setRefreshTokenCredential(refreshToken: RefreshTokenEntity): Promise<void>;
 
     /**
      * fetch appMetadata entity from the platform cache
@@ -153,7 +150,7 @@ export abstract class CacheManager implements ICacheManager {
      * set appMetadata entity to the platform cache
      * @param appMetadata
      */
-    abstract setAppMetadata(appMetadata: AppMetadataEntity): void;
+    abstract setAppMetadata(appMetadata: AppMetadataEntity): Promise<void>;
 
     /**
      * fetch server telemetry entity from the platform cache
@@ -171,7 +168,7 @@ export abstract class CacheManager implements ICacheManager {
     abstract setServerTelemetry(
         serverTelemetryKey: string,
         serverTelemetry: ServerTelemetryEntity
-    ): void;
+    ): Promise<void>;
 
     /**
      * fetch cloud discovery metadata entity from the platform cache
@@ -210,18 +207,13 @@ export abstract class CacheManager implements ICacheManager {
     abstract setThrottlingCache(
         throttlingCacheKey: string,
         throttlingCache: ThrottlingEntity
-    ): void;
+    ): Promise<void>;
 
     /**
      * Function to remove an item from cache given its key.
      * @param key
      */
     abstract removeItem(key: string): void;
-
-    /**
-     * Function which retrieves all current keys from the cache.
-     */
-    abstract getKeys(): string[];
 
     /**
      * Function which retrieves all account keys from the cache
@@ -239,7 +231,7 @@ export abstract class CacheManager implements ICacheManager {
     abstract updateCredentialCacheKey(
         currentCacheKey: string,
         credential: ValidCredentialType
-    ): string;
+    ): Promise<string>;
 
     /**
      * Returns all the accounts in the cache that match the optional filter. If no filter is provided, all accounts are returned.
@@ -504,11 +496,11 @@ export abstract class CacheManager implements ICacheManager {
 
         try {
             if (!!cacheRecord.account) {
-                this.setAccount(cacheRecord.account);
+                await this.setAccount(cacheRecord.account);
             }
 
             if (!!cacheRecord.idToken && storeInCache?.idToken !== false) {
-                this.setIdTokenCredential(cacheRecord.idToken);
+                await this.setIdTokenCredential(cacheRecord.idToken);
             }
 
             if (
@@ -522,11 +514,11 @@ export abstract class CacheManager implements ICacheManager {
                 !!cacheRecord.refreshToken &&
                 storeInCache?.refreshToken !== false
             ) {
-                this.setRefreshTokenCredential(cacheRecord.refreshToken);
+                await this.setRefreshTokenCredential(cacheRecord.refreshToken);
             }
 
             if (!!cacheRecord.appMetadata) {
-                this.setAppMetadata(cacheRecord.appMetadata);
+                await this.setAppMetadata(cacheRecord.appMetadata);
             }
         } catch (e: unknown) {
             this.commonLogger?.error(`CacheManager.saveCacheRecord: failed`);
@@ -602,7 +594,7 @@ export abstract class CacheManager implements ICacheManager {
             }
         });
         await Promise.all(removedAccessTokens);
-        this.setAccessTokenCredential(credential);
+        await this.setAccessTokenCredential(credential);
     }
 
     /**
@@ -875,47 +867,6 @@ export abstract class CacheManager implements ICacheManager {
     }
 
     /**
-     * retrieve appMetadata matching all provided filters; if no filter is set, get all appMetadata
-     * @param filter
-     */
-    getAppMetadataFilteredBy(filter: AppMetadataFilter): AppMetadataCache {
-        const allCacheKeys = this.getKeys();
-        const matchingAppMetadata: AppMetadataCache = {};
-
-        allCacheKeys.forEach((cacheKey) => {
-            // don't parse any non-appMetadata type cache entities
-            if (!this.isAppMetadata(cacheKey)) {
-                return;
-            }
-
-            // Attempt retrieval
-            const entity = this.getAppMetadata(cacheKey);
-
-            if (!entity) {
-                return;
-            }
-
-            if (
-                !!filter.environment &&
-                !this.matchEnvironment(entity, filter.environment)
-            ) {
-                return;
-            }
-
-            if (
-                !!filter.clientId &&
-                !this.matchClientId(entity, filter.clientId)
-            ) {
-                return;
-            }
-
-            matchingAppMetadata[cacheKey] = entity;
-        });
-
-        return matchingAppMetadata;
-    }
-
-    /**
      * retrieve authorityMetadata that contains a matching alias
      * @param filter
      */
@@ -1007,88 +958,6 @@ export abstract class CacheManager implements ICacheManager {
     }
 
     /**
-     * Migrates a single-tenant account and all it's associated alternate cross-tenant account objects in the
-     * cache into a condensed multi-tenant account object with tenant profiles.
-     * @param accountKey
-     * @param accountEntity
-     * @param logger
-     * @returns
-     */
-    protected updateOutdatedCachedAccount(
-        accountKey: string,
-        accountEntity: AccountEntity | null,
-        logger?: Logger
-    ): AccountEntity | null {
-        // Only update if account entity is defined and has no tenantProfiles object (is outdated)
-        if (accountEntity && accountEntity.isSingleTenant()) {
-            this.commonLogger?.verbose(
-                "updateOutdatedCachedAccount: Found a single-tenant (outdated) account entity in the cache, migrating to multi-tenant account entity"
-            );
-
-            // Get keys of all accounts belonging to user
-            const matchingAccountKeys = this.getAccountKeys().filter(
-                (key: string) => {
-                    return key.startsWith(accountEntity.homeAccountId);
-                }
-            );
-
-            // Get all account entities belonging to user
-            const accountsToMerge: AccountEntity[] = [];
-            matchingAccountKeys.forEach((key: string) => {
-                const account = this.getCachedAccountEntity(key);
-                if (account) {
-                    accountsToMerge.push(account);
-                }
-            });
-
-            // Set base account to home account if available, any account if not
-            const baseAccount =
-                accountsToMerge.find((account) => {
-                    return tenantIdMatchesHomeTenant(
-                        account.realm,
-                        account.homeAccountId
-                    );
-                }) || accountsToMerge[0];
-
-            // Populate tenant profiles built from each account entity belonging to the user
-            baseAccount.tenantProfiles = accountsToMerge.map(
-                (account: AccountEntity) => {
-                    return {
-                        tenantId: account.realm,
-                        localAccountId: account.localAccountId,
-                        name: account.name,
-                        isHomeTenant: tenantIdMatchesHomeTenant(
-                            account.realm,
-                            account.homeAccountId
-                        ),
-                    };
-                }
-            );
-
-            const updatedAccount = CacheManager.toObject(new AccountEntity(), {
-                ...baseAccount,
-            });
-
-            const newAccountKey = updatedAccount.generateAccountKey();
-
-            // Clear cache of legacy account objects that have been collpsed into tenant profiles
-            matchingAccountKeys.forEach((key: string) => {
-                if (key !== newAccountKey) {
-                    this.removeOutdatedAccount(accountKey);
-                }
-            });
-
-            // Cache updated account object
-            this.setAccount(updatedAccount);
-            logger?.verbose("Updated an outdated account entity in the cache");
-            return updatedAccount;
-        }
-
-        // No update is necessary
-        return accountEntity;
-    }
-
-    /**
      * returns a boolean if the given credential is removed
      * @param credential
      */
@@ -1121,20 +990,6 @@ export abstract class CacheManager implements ICacheManager {
         }
 
         return this.removeItem(key);
-    }
-
-    /**
-     * Removes all app metadata objects from cache.
-     */
-    removeAppMetadata(): boolean {
-        const allCacheKeys = this.getKeys();
-        allCacheKeys.forEach((cacheKey) => {
-            if (this.isAppMetadata(cacheKey)) {
-                this.removeItem(cacheKey);
-            }
-        });
-
-        return true;
     }
 
     /**
@@ -1384,7 +1239,7 @@ export abstract class CacheManager implements ICacheManager {
                 "CacheManager:getAccessToken - Multiple access tokens found, clearing them"
             );
             accessTokens.forEach((accessToken) => {
-                void this.removeAccessToken(generateCredentialKey(accessToken));
+                void this.removeAccessToken(CacheHelpers.generateCredentialKey(accessToken));
             });
             if (performanceClient && correlationId) {
                 performanceClient.addFields(
@@ -1596,27 +1451,15 @@ export abstract class CacheManager implements ICacheManager {
      * Retrieve AppMetadataEntity from cache
      */
     readAppMetadataFromCache(environment: string): AppMetadataEntity | null {
-        const appMetadataFilter: AppMetadataFilter = {
+        const appMetadataFilter: Required<AppMetadataFilter> = {
             environment,
             clientId: this.clientId,
         };
 
-        const appMetadata: AppMetadataCache =
-            this.getAppMetadataFilteredBy(appMetadataFilter);
-        const appMetadataEntries: AppMetadataEntity[] = Object.keys(
-            appMetadata
-        ).map((key) => appMetadata[key]);
+        const appMetadata: AppMetadataEntity | null = 
+            this.getAppMetadata(CacheHelpers.generateAppMetadataKey(appMetadataFilter)) || null;
 
-        const numAppMetadata = appMetadataEntries.length;
-        if (numAppMetadata < 1) {
-            return null;
-        } else if (numAppMetadata > 1) {
-            throw createClientAuthError(
-                ClientAuthErrorCodes.multipleMatchingAppMetadata
-            );
-        }
-
-        return appMetadataEntries[0] as AppMetadataEntity;
+        return appMetadata;
     }
 
     /**
@@ -1897,14 +1740,6 @@ export abstract class CacheManager implements ICacheManager {
     }
 
     /**
-     * returns if a given cache entity is of the type appmetadata
-     * @param key
-     */
-    private isAppMetadata(key: string): boolean {
-        return key.indexOf(APP_METADATA) !== -1;
-    }
-
-    /**
      * returns if a given cache entity is of the type authoritymetadata
      * @param key
      */
@@ -1934,7 +1769,7 @@ export abstract class CacheManager implements ICacheManager {
 
 /** @internal */
 export class DefaultStorageClass extends CacheManager {
-    setAccount(): void {
+    setAccount(): Promise<void> {
         throw createClientAuthError(ClientAuthErrorCodes.methodNotImplemented);
     }
     getAccount(): AccountEntity {
@@ -1943,31 +1778,31 @@ export class DefaultStorageClass extends CacheManager {
     getCachedAccountEntity(): AccountEntity | null {
         throw createClientAuthError(ClientAuthErrorCodes.methodNotImplemented);
     }
-    setIdTokenCredential(): void {
+    setIdTokenCredential(): Promise<void> {
         throw createClientAuthError(ClientAuthErrorCodes.methodNotImplemented);
     }
     getIdTokenCredential(): IdTokenEntity {
         throw createClientAuthError(ClientAuthErrorCodes.methodNotImplemented);
     }
-    setAccessTokenCredential(): void {
+    setAccessTokenCredential(): Promise<void> {
         throw createClientAuthError(ClientAuthErrorCodes.methodNotImplemented);
     }
     getAccessTokenCredential(): AccessTokenEntity {
         throw createClientAuthError(ClientAuthErrorCodes.methodNotImplemented);
     }
-    setRefreshTokenCredential(): void {
+    setRefreshTokenCredential(): Promise<void> {
         throw createClientAuthError(ClientAuthErrorCodes.methodNotImplemented);
     }
     getRefreshTokenCredential(): RefreshTokenEntity {
         throw createClientAuthError(ClientAuthErrorCodes.methodNotImplemented);
     }
-    setAppMetadata(): void {
+    setAppMetadata(): Promise<void> {
         throw createClientAuthError(ClientAuthErrorCodes.methodNotImplemented);
     }
     getAppMetadata(): AppMetadataEntity {
         throw createClientAuthError(ClientAuthErrorCodes.methodNotImplemented);
     }
-    setServerTelemetry(): void {
+    setServerTelemetry(): Promise<void> {
         throw createClientAuthError(ClientAuthErrorCodes.methodNotImplemented);
     }
     getServerTelemetry(): ServerTelemetryEntity {
@@ -1982,7 +1817,7 @@ export class DefaultStorageClass extends CacheManager {
     getAuthorityMetadataKeys(): Array<string> {
         throw createClientAuthError(ClientAuthErrorCodes.methodNotImplemented);
     }
-    setThrottlingCache(): void {
+    setThrottlingCache(): Promise<void> {
         throw createClientAuthError(ClientAuthErrorCodes.methodNotImplemented);
     }
     getThrottlingCache(): ThrottlingEntity {
@@ -1991,19 +1826,16 @@ export class DefaultStorageClass extends CacheManager {
     removeItem(): boolean {
         throw createClientAuthError(ClientAuthErrorCodes.methodNotImplemented);
     }
-    getKeys(): string[] {
-        throw createClientAuthError(ClientAuthErrorCodes.methodNotImplemented);
-    }
     getAccountKeys(): string[] {
         throw createClientAuthError(ClientAuthErrorCodes.methodNotImplemented);
     }
     getTokenKeys(): TokenKeys {
         throw createClientAuthError(ClientAuthErrorCodes.methodNotImplemented);
     }
-    updateCredentialCacheKey(): string {
+    updateCredentialCacheKey(): Promise<string> {
         throw createClientAuthError(ClientAuthErrorCodes.methodNotImplemented);
     }
-    removeOutdatedAccount(): void {
+    removeOutdatedAccount(): Promise<void> {
         throw createClientAuthError(ClientAuthErrorCodes.methodNotImplemented);
     }
 }
