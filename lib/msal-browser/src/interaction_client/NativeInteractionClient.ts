@@ -220,13 +220,13 @@ export class NativeInteractionClient extends BaseInteractionClient {
                 nativeRequest,
                 reqTimestamp
             )
-                .then((result: AuthenticationResult) => {
+                .then(async (result: AuthenticationResult) => {
                     nativeATMeasurement.end({
                         success: true,
                         isNativeBroker: true,
                         requestId: result.requestId,
                     });
-                    this.serverTelemetryManager.clearNativeBrokerErrorCode();
+                    await this.serverTelemetryManager.clearNativeBrokerErrorCode();
                     return result;
                 })
                 .catch((error: AuthError) => {
@@ -240,7 +240,7 @@ export class NativeInteractionClient extends BaseInteractionClient {
                 });
         } catch (e) {
             if (e instanceof NativeAuthError) {
-                this.serverTelemetryManager.setNativeBrokerErrorCode(
+                await this.serverTelemetryManager.setNativeBrokerErrorCode(
                     e.errorCode
                 );
             }
@@ -349,7 +349,7 @@ export class NativeInteractionClient extends BaseInteractionClient {
         } catch (e) {
             // Only throw fatal errors here to allow application to fallback to regular redirect. Otherwise proceed and the error will be thrown in handleRedirectPromise
             if (e instanceof NativeAuthError) {
-                this.serverTelemetryManager.setNativeBrokerErrorCode(
+                await this.serverTelemetryManager.setNativeBrokerErrorCode(
                     e.errorCode
                 );
                 if (isFatalNativeAuthError(e)) {
@@ -443,7 +443,7 @@ export class NativeInteractionClient extends BaseInteractionClient {
             );
             this.tempCache.setInteractionInProgress(false);
             const res = await result;
-            this.serverTelemetryManager.clearNativeBrokerErrorCode();
+            await this.serverTelemetryManager.clearNativeBrokerErrorCode();
             return res;
         } catch (e) {
             this.tempCache.setInteractionInProgress(false);

@@ -96,11 +96,6 @@ export abstract class CacheManager implements ICacheManager {
     abstract setAccount(account: AccountEntity): Promise<void>;
 
     /**
-     * remove account entity from the platform cache if it's outdated
-     */
-    abstract removeOutdatedAccount(accountKey: string): Promise<void>;
-
-    /**
      * fetch the idToken entity from the platform cache
      * @param idTokenKey
      */
@@ -224,14 +219,6 @@ export abstract class CacheManager implements ICacheManager {
      * Function which retrieves all token keys from the cache
      */
     abstract getTokenKeys(): TokenKeys;
-
-    /**
-     * Function which updates an outdated credential cache key
-     */
-    abstract updateCredentialCacheKey(
-        currentCacheKey: string,
-        credential: ValidCredentialType
-    ): Promise<string>;
 
     /**
      * Returns all the accounts in the cache that match the optional filter. If no filter is provided, all accounts are returned.
@@ -1830,12 +1817,6 @@ export class DefaultStorageClass extends CacheManager {
         throw createClientAuthError(ClientAuthErrorCodes.methodNotImplemented);
     }
     getTokenKeys(): TokenKeys {
-        throw createClientAuthError(ClientAuthErrorCodes.methodNotImplemented);
-    }
-    updateCredentialCacheKey(): Promise<string> {
-        throw createClientAuthError(ClientAuthErrorCodes.methodNotImplemented);
-    }
-    removeOutdatedAccount(): Promise<void> {
         throw createClientAuthError(ClientAuthErrorCodes.methodNotImplemented);
     }
 }

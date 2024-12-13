@@ -155,7 +155,7 @@ export class SilentIframeClient extends StandardInteractionClient {
         } catch (e) {
             if (e instanceof AuthError) {
                 (e as AuthError).setCorrelationId(this.correlationId);
-                serverTelemetryManager.cacheFailedRequest(e);
+                await serverTelemetryManager.cacheFailedRequest(e);
             }
 
             if (

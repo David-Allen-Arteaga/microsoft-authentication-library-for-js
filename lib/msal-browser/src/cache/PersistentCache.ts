@@ -3,21 +3,29 @@
  * Licensed under the MIT License.
  */
 
-import { getBrowserStorage } from "./CacheHelpers.js";
+import { generateCacheKey, getBrowserStorage } from "./CacheHelpers.js";
 import { IWindowStorage } from "./IWindowStorage.js";
 import { CacheOptions } from "../config/Configuration.js";
-import { Constants } from "@azure/msal-common/browser";
+import { Constants, PersistentCacheKeys, TokenKeys } from "@azure/msal-common/browser";
 import { MemoryStorage } from "./MemoryStorage.js";
-import { BrowserCacheLocation } from "../utils/BrowserConstants.js";
+import { BrowserCacheLocation, StaticCacheKeys } from "../utils/BrowserConstants.js";
 import { CookieStorage } from "./CookieStorage.js";
 import { LocalStorage } from "./LocalStorage.js";
-import { createNewGuid, encrypt, exportBaseKey, generateBaseKey, importBaseKey } from "../crypto/BrowserCrypto.js";
+import { createNewGuid, decrypt, encrypt, generateBaseKey, generateHKDF } from "../crypto/BrowserCrypto.js";
+import { base64DecToArr } from "../encode/Base64Decode.js";
+import { urlEncodeArr } from "../encode/Base64Encode.js";
 
 const ENCRYPTION_KEY = "msal.cache.encryption";
 
 type EncryptionCookie = {
     id: string,
     key: CryptoKey
+}
+
+type EncryptedData = {
+    id: string,
+    nonce: string,
+    data: string
 }
 
 export class PersistentCache {
@@ -44,30 +52,38 @@ export class PersistentCache {
 
         const cookies = new CookieStorage();
         const cookieString = cookies.getItem(ENCRYPTION_KEY);
+        let parsedCookie = { key: "", id: ""};
         if (cookieString) {
-            const parsedCookie = JSON.parse(cookieString);
-            if (parsedCookie.key && parsedCookie.id) {
-                this.encryptionCookie = {
-                    id: parsedCookie.id,
-                    key: await importBaseKey(parsedCookie.key)
-                }
-                return;
+            try {
+                parsedCookie = JSON.parse(cookieString);
+            } catch (e){
+                // TODO: Log telemetry but don't throw
             }
         }
-
-        const id = createNewGuid();
-        const baseKey = await generateBaseKey();
-        const keyStr = await exportBaseKey(baseKey);
-        this.encryptionCookie = {
-            id: id,
-            key: baseKey
-        };
-
-        const cookieData = {
-            id:id, 
-            key:keyStr
+        if (parsedCookie.key && parsedCookie.id) {
+            // Encryption key already exists, import
+            this.encryptionCookie = {
+                id: parsedCookie.id,
+                key: await generateHKDF(base64DecToArr(parsedCookie.key))
+            }
+        } else {
+            // Encryption key doesn't exist or is invalid, generate a new one
+            const id = createNewGuid();
+            const baseKey = await generateBaseKey();
+            const keyStr = urlEncodeArr(new Uint8Array(baseKey));
+            this.encryptionCookie = {
+                id: id,
+                key: await generateHKDF(baseKey)
+            };
+    
+            const cookieData = {
+                id:id, 
+                key:keyStr
+            }
+            cookies.setItem(ENCRYPTION_KEY, JSON.stringify(cookieData));
         }
-        cookies.setItem(ENCRYPTION_KEY, JSON.stringify(cookieData));
+
+        await this.importExistingCache();
     }
 
     getItem(key: string): string | null {
@@ -80,7 +96,8 @@ export class PersistentCache {
         if (this.encryptionCookie && this.encryptedStorage) {
             const {data, nonce} = await encrypt(this.encryptionCookie.key, value);
 
-            this.encryptedStorage.setItem(key, JSON.stringify({id: this.encryptionCookie.id, nonce: nonce, data: data}));
+            const encryptedData: EncryptedData = {id: this.encryptionCookie.id, nonce: nonce, data: data};
+            this.encryptedStorage.setItem(key, JSON.stringify(encryptedData));
         }
     }
 
@@ -100,5 +117,96 @@ export class PersistentCache {
                 this.encryptedStorage?.removeItem(cacheKey);
             }
         });
+    }
+
+    private async importExistingCache(): Promise<void> {
+        if (!this.encryptedStorage) {
+            return;
+        }
+
+        await this.importAccounts();
+        await this.importTokens();
+    }
+
+    private async importAccounts(): Promise<void> {
+        const accountKeyStr = await this.getItemFromEncryptedCache(StaticCacheKeys.ACCOUNT_KEYS);
+        if (accountKeyStr) {
+            let accountKeys: Array<string> = [];
+            try {
+                accountKeys = JSON.parse(accountKeyStr);
+                this.storage.setItem(StaticCacheKeys.ACCOUNT_KEYS, accountKeyStr);
+                await this.importArray(accountKeys);
+            } catch(e) {
+                // TODO: Log telemetry, don't throw
+            }
+        }
+
+        const activeAccountKey = generateCacheKey(
+            PersistentCacheKeys.ACTIVE_ACCOUNT_FILTERS,
+            this.clientId
+        );
+        const activeAccount = await this.getItemFromEncryptedCache(activeAccountKey);
+        if (activeAccount) {
+            this.storage.setItem(activeAccountKey, activeAccount);
+        }
+    }
+
+    private async importTokens(): Promise<void> {
+        const tkKey = `${StaticCacheKeys.TOKEN_KEYS}.${this.clientId}`
+        const tokenKeyStr = await this.getItemFromEncryptedCache(tkKey);
+        if (tokenKeyStr) {
+            let tokenKeys: TokenKeys;
+            try {
+                tokenKeys = JSON.parse(tokenKeyStr);
+                this.storage.setItem(tkKey, tokenKeyStr);
+
+                await Promise.all([this.importArray(tokenKeys.idToken), this.importArray(tokenKeys.accessToken), this.importArray(tokenKeys.refreshToken)]);
+            } catch(e) {
+                // TODO: Log telemetry, don't throw
+            }
+        }
+    }
+
+    private async importArray(arr: Array<string>): Promise<void> {
+        const promiseArr: Array<Promise<void>> = [];
+        arr.forEach((key) => {
+            const promise = this.getItemFromEncryptedCache(key).then((value) => {
+                if (value) {
+                    this.storage.setItem(key, value);
+                }
+            });
+            promiseArr.push(promise);
+        });
+        
+        await Promise.all(promiseArr);
+    }
+
+    private async getItemFromEncryptedCache(key: string): Promise<string | null> {
+        if (!this.encryptedStorage || !this.encryptionCookie) {
+            return null;
+        }
+
+        const rawCache = this.encryptedStorage.getItem(key);
+        if (!rawCache) {
+            return null;
+        }
+
+        let encObj: EncryptedData;
+        try {
+            encObj = JSON.parse(rawCache);
+            if (!encObj.id || !encObj.nonce || !encObj.data) {
+                throw "Not encrypted!" // TODO: Typed error
+            }
+
+            if (encObj.id !== this.encryptionCookie.id) {
+                throw "Old item!" // TODO: Typed error
+            }
+        } catch (e) {
+            // Not a valid encrypted object, remove
+            this.encryptedStorage?.removeItem(key);
+            return null;
+        }
+
+        return decrypt(this.encryptionCookie.key, encObj.nonce, encObj.data);
     }
 }

@@ -217,8 +217,8 @@ export async function sign(
 /**
  * Generates symmetric base encryption key
  */
-export async function generateBaseKey(): Promise<CryptoKey> {
-    return window.crypto.subtle.generateKey(
+export async function generateBaseKey(): Promise<ArrayBuffer> {
+    const key = await window.crypto.subtle.generateKey(
         {
             name: "AES-GCM",
             length: 256
@@ -226,21 +226,14 @@ export async function generateBaseKey(): Promise<CryptoKey> {
         true,
         ["encrypt", "decrypt"]
     )
+   return window.crypto.subtle.exportKey("raw", key);
 }
 
-export async function exportBaseKey(key: CryptoKey): Promise<string> {
-    const rawKey = await window.crypto.subtle.exportKey("jwk", key);
-    return JSON.stringify(rawKey);
-}
-
-export async function importBaseKey(key: string): Promise<CryptoKey> {
-    const jwk = JSON.parse(key);
-    return window.crypto.subtle.importKey("jwk", jwk, "AES-GCM", true, ["encrypt", "decrypt"]);
+export async function generateHKDF(baseKey: ArrayBuffer): Promise<CryptoKey> {
+    return window.crypto.subtle.importKey("raw", baseKey, "HKDF", false, ["deriveKey"]);
 }
 
 async function deriveKey(baseKey: CryptoKey, nonce: ArrayBuffer): Promise<CryptoKey> {
-    const rawKey = await window.crypto.subtle.exportKey("raw", baseKey);
-    const hkdfBase = await window.crypto.subtle.importKey("raw", rawKey, "HKDF", false, ["deriveKey"]);
     return window.crypto.subtle.deriveKey(
         {
             name: "HKDF",
@@ -248,7 +241,7 @@ async function deriveKey(baseKey: CryptoKey, nonce: ArrayBuffer): Promise<Crypto
             hash: S256_HASH_ALG,
             info: new ArrayBuffer(0)
         },
-        hkdfBase,
+        baseKey,
         { name: "AES-GCM", length: 256 },
         false,
         ["encrypt", "decrypt"]
@@ -274,7 +267,6 @@ export async function encrypt(baseKey: CryptoKey, rawData: string): Promise<{dat
       encodedData
     );
 
-    
     return {
         data: urlEncodeArr(new Uint8Array(encryptedData)),
         nonce: urlEncodeArr(nonce)

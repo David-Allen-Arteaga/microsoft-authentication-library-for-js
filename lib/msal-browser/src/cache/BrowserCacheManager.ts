@@ -20,7 +20,6 @@ import {
     DEFAULT_CRYPTO_IMPLEMENTATION,
     AccountInfo,
     ActiveAccountFilters,
-    ValidCredentialType,
     TokenKeys,
     CredentialType,
     CacheRecord,
@@ -249,15 +248,6 @@ export class BrowserCacheManager extends CacheManager {
     async removeAccount(key: string): Promise<void> {
         await super.removeAccount(key);
         await this.removeAccountKeyFromMap(key);
-    }
-
-    /**
-     * Remove account entity from the platform cache if it's outdated
-     * @param accountKey
-     */
-    async removeOutdatedAccount(accountKey: string): Promise<void> {
-        this.removeItem(accountKey);
-        await this.removeAccountKeyFromMap(accountKey);
     }
 
     /**
@@ -917,34 +907,6 @@ export class BrowserCacheManager extends CacheManager {
         }
 
         return parsedRequest;
-    }
-
-    /**
-     * Updates a credential's cache key if the current cache key is outdated
-     */
-    async updateCredentialCacheKey(
-        currentCacheKey: string,
-        credential: ValidCredentialType
-    ): Promise<string> {
-        const updatedCacheKey = CacheHelpers.generateCredentialKey(credential);
-
-        if (currentCacheKey !== updatedCacheKey) {
-            const cacheItem = this.getItem(currentCacheKey);
-            if (cacheItem) {
-                this.browserStorage.removeItem(currentCacheKey);
-                await this.setItem(updatedCacheKey, cacheItem);
-                this.logger.verbose(
-                    `Updated an outdated ${credential.credentialType} cache key`
-                );
-                return updatedCacheKey;
-            } else {
-                this.logger.error(
-                    `Attempted to update an outdated ${credential.credentialType} cache key but no item matching the outdated key was found in storage`
-                );
-            }
-        }
-
-        return currentCacheKey;
     }
 
     /**
