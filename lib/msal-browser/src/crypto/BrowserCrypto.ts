@@ -13,6 +13,7 @@ import {
 } from "@azure/msal-common/browser";
 import { KEY_FORMAT_JWK } from "../utils/BrowserConstants.js";
 import { urlEncodeArr } from "../encode/Base64Encode.js";
+import { base64DecToArr } from "../encode/Base64Decode.js";
 
 /**
  * This file defines functions used by the browser library to perform cryptography operations such as
@@ -228,23 +229,26 @@ export async function generateBaseKey(): Promise<CryptoKey> {
 }
 
 export async function exportBaseKey(key: CryptoKey): Promise<string> {
-    const rawKey = await window.crypto.subtle.exportKey("raw", key);
-    return new TextDecoder().decode(rawKey);
+    const rawKey = await window.crypto.subtle.exportKey("jwk", key);
+    return JSON.stringify(rawKey);
 }
 
 export async function importBaseKey(key: string): Promise<CryptoKey> {
-    const buffer = new TextEncoder().encode(key);
-    return window.crypto.subtle.importKey("raw", buffer, "AES-GCM", true, ["encrypt", "decrypt"]);
+    const jwk = JSON.parse(key);
+    return window.crypto.subtle.importKey("jwk", jwk, "AES-GCM", true, ["encrypt", "decrypt"]);
 }
 
 async function deriveKey(baseKey: CryptoKey, nonce: ArrayBuffer): Promise<CryptoKey> {
+    const rawKey = await window.crypto.subtle.exportKey("raw", baseKey);
+    const hkdfBase = await window.crypto.subtle.importKey("raw", rawKey, "HKDF", false, ["deriveKey"]);
     return window.crypto.subtle.deriveKey(
         {
             name: "HKDF",
             salt: nonce,
-            hash: S256_HASH_ALG
+            hash: S256_HASH_ALG,
+            info: new ArrayBuffer(0)
         },
-        baseKey,
+        hkdfBase,
         { name: "AES-GCM", length: 256 },
         false,
         ["encrypt", "decrypt"]
@@ -264,15 +268,16 @@ export async function encrypt(baseKey: CryptoKey, rawData: string): Promise<{dat
     const encryptedData = await window.crypto.subtle.encrypt(
       {
         name: "AES-GCM",
-        iv: new ArrayBuffer(0) // New key is derived for every encrypt so we don't need a new nonce
+        iv: new Uint8Array(12) // New key is derived for every encrypt so we don't need a new nonce
       },
       derivedKey,
       encodedData
     );
 
+    
     return {
-        data: new TextDecoder().decode(encryptedData),
-        nonce: new TextDecoder().decode(nonce)
+        data: urlEncodeArr(new Uint8Array(encryptedData)),
+        nonce: urlEncodeArr(nonce)
     }
 }
 
@@ -284,12 +289,12 @@ export async function encrypt(baseKey: CryptoKey, rawData: string): Promise<{dat
  * @returns 
  */
 export async function decrypt(baseKey: CryptoKey, nonce: string, encryptedData: string): Promise<string> {
-    const encodedData = new TextEncoder().encode(encryptedData);
-    const derivedKey = await deriveKey(baseKey, new TextEncoder().encode(nonce));
+    const encodedData = base64DecToArr(encryptedData);
+    const derivedKey = await deriveKey(baseKey, base64DecToArr(nonce));
     const decryptedData = await window.crypto.subtle.decrypt(
         {
           name: "AES-GCM",
-          iv: new ArrayBuffer(0) // New key is derived for every encrypt so we don't need a new nonce
+          iv: new Uint8Array(12) // New key is derived for every encrypt so we don't need a new nonce
         },
         derivedKey,
         encodedData
