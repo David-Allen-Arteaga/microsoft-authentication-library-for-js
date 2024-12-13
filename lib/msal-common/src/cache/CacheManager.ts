@@ -163,7 +163,7 @@ export abstract class CacheManager implements ICacheManager {
     abstract setServerTelemetry(
         serverTelemetryKey: string,
         serverTelemetry: ServerTelemetryEntity
-    ): Promise<void>;
+    ): void;
 
     /**
      * fetch cloud discovery metadata entity from the platform cache
@@ -202,7 +202,7 @@ export abstract class CacheManager implements ICacheManager {
     abstract setThrottlingCache(
         throttlingCacheKey: string,
         throttlingCache: ThrottlingEntity
-    ): Promise<void>;
+    ): void;
 
     /**
      * Function to remove an item from cache given its key.
@@ -1789,7 +1789,7 @@ export class DefaultStorageClass extends CacheManager {
     getAppMetadata(): AppMetadataEntity {
         throw createClientAuthError(ClientAuthErrorCodes.methodNotImplemented);
     }
-    setServerTelemetry(): Promise<void> {
+    setServerTelemetry(): void {
         throw createClientAuthError(ClientAuthErrorCodes.methodNotImplemented);
     }
     getServerTelemetry(): ServerTelemetryEntity {
@@ -1804,7 +1804,7 @@ export class DefaultStorageClass extends CacheManager {
     getAuthorityMetadataKeys(): Array<string> {
         throw createClientAuthError(ClientAuthErrorCodes.methodNotImplemented);
     }
-    setThrottlingCache(): Promise<void> {
+    setThrottlingCache(): void {
         throw createClientAuthError(ClientAuthErrorCodes.methodNotImplemented);
     }
     getThrottlingCache(): ThrottlingEntity {

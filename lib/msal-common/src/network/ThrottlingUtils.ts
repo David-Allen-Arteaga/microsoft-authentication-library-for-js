@@ -77,7 +77,7 @@ export class ThrottlingUtils {
                 errorMessage: response.body.error_description,
                 subError: response.body.suberror,
             };
-            await cacheManager.setThrottlingCache(
+            cacheManager.setThrottlingCache(
                 ThrottlingUtils.generateThrottlingStorageKey(thumbprint),
                 thumbprintValue
             );

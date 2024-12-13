@@ -608,7 +608,7 @@ export class BrowserCacheManager extends CacheManager {
     getServerTelemetry(
         serverTelemetryKey: string
     ): ServerTelemetryEntity | null {
-        const value = this.getItem(serverTelemetryKey);
+        const value = this.tempCache.getItem(serverTelemetryKey);
         if (!value) {
             this.logger.trace(
                 "BrowserCacheManager.getServerTelemetry: called, no cache hit"
@@ -638,12 +638,12 @@ export class BrowserCacheManager extends CacheManager {
      * @param serverTelemetryKey
      * @param serverTelemetry
      */
-    async setServerTelemetry(
+    setServerTelemetry(
         serverTelemetryKey: string,
         serverTelemetry: ServerTelemetryEntity
-    ): Promise<void> {
+    ): void {
         this.logger.trace("BrowserCacheManager.setServerTelemetry called");
-        await this.setItem(serverTelemetryKey, JSON.stringify(serverTelemetry));
+        this.tempCache.setItem(serverTelemetryKey, JSON.stringify(serverTelemetry));
     }
 
     /**
@@ -783,7 +783,7 @@ export class BrowserCacheManager extends CacheManager {
      * @param throttlingCacheKey
      */
     getThrottlingCache(throttlingCacheKey: string): ThrottlingEntity | null {
-        const value = this.getItem(throttlingCacheKey);
+        const value = this.tempCache.getItem(throttlingCacheKey);
         if (!value) {
             this.logger.trace(
                 "BrowserCacheManager.getThrottlingCache: called, no cache hit"
@@ -814,12 +814,12 @@ export class BrowserCacheManager extends CacheManager {
      * @param throttlingCacheKey
      * @param throttlingCache
      */
-    async setThrottlingCache(
+    setThrottlingCache(
         throttlingCacheKey: string,
         throttlingCache: ThrottlingEntity
-    ): Promise<void> {
+    ): void {
         this.logger.trace("BrowserCacheManager.setThrottlingCache called");
-        await this.setItem(throttlingCacheKey, JSON.stringify(throttlingCache));
+        this.tempCache.setItem(throttlingCacheKey, JSON.stringify(throttlingCache));
     }
 
     /**

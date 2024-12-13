@@ -167,7 +167,7 @@ export abstract class BaseClient {
             response.status !== 429
         ) {
             // Telemetry data successfully logged by server, clear Telemetry cache
-            await this.config.serverTelemetryManager.clearTelemetryCache();
+            this.config.serverTelemetryManager.clearTelemetryCache();
         }
 
         return response;

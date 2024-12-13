@@ -172,7 +172,7 @@ export class ServerTelemetryManager {
      * API to cache token failures for MSER data capture
      * @param error
      */
-    async cacheFailedRequest(error: unknown): Promise<void> {
+    cacheFailedRequest(error: unknown): void {
         const lastRequests = this.getLastRequests();
         if (
             lastRequests.errors.length >=
@@ -202,7 +202,7 @@ export class ServerTelemetryManager {
             lastRequests.errors.push(SERVER_TELEM_CONSTANTS.UNKNOWN_ERROR);
         }
 
-        await this.cacheManager.setServerTelemetry(
+        this.cacheManager.setServerTelemetry(
             this.telemetryCacheKey,
             lastRequests
         );
@@ -213,11 +213,11 @@ export class ServerTelemetryManager {
     /**
      * Update server telemetry cache entry by incrementing cache hit counter
      */
-    async incrementCacheHits(): Promise<number> {
+    incrementCacheHits(): number {
         const lastRequests = this.getLastRequests();
         lastRequests.cacheHits += 1;
 
-        await this.cacheManager.setServerTelemetry(
+        this.cacheManager.setServerTelemetry(
             this.telemetryCacheKey,
             lastRequests
         );
@@ -243,7 +243,7 @@ export class ServerTelemetryManager {
     /**
      * Remove server telemetry cache entry
      */
-    async clearTelemetryCache(): Promise<void> {
+    clearTelemetryCache(): void {
         const lastRequests = this.getLastRequests();
         const numErrorsFlushed =
             ServerTelemetryManager.maxErrorsToSend(lastRequests);
@@ -261,7 +261,7 @@ export class ServerTelemetryManager {
                 cacheHits: 0,
             };
 
-            await this.cacheManager.setServerTelemetry(
+            this.cacheManager.setServerTelemetry(
                 this.telemetryCacheKey,
                 serverTelemEntity
             );
@@ -346,10 +346,10 @@ export class ServerTelemetryManager {
         this.cacheOutcome = cacheOutcome;
     }
 
-    async setNativeBrokerErrorCode(errorCode: string): Promise<void> {
+    setNativeBrokerErrorCode(errorCode: string): void {
         const lastRequests = this.getLastRequests();
         lastRequests.nativeBrokerErrorCode = errorCode;
-        await this.cacheManager.setServerTelemetry(
+        this.cacheManager.setServerTelemetry(
             this.telemetryCacheKey,
             lastRequests
         );
@@ -359,10 +359,10 @@ export class ServerTelemetryManager {
         return this.getLastRequests().nativeBrokerErrorCode;
     }
 
-    async clearNativeBrokerErrorCode(): Promise<void> {
+    clearNativeBrokerErrorCode(): void {
         const lastRequests = this.getLastRequests();
         delete lastRequests.nativeBrokerErrorCode;
-        await this.cacheManager.setServerTelemetry(
+        this.cacheManager.setServerTelemetry(
             this.telemetryCacheKey,
             lastRequests
         );

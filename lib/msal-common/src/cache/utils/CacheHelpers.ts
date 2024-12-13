@@ -12,10 +12,10 @@ import {
     createClientAuthError,
 } from "../../error/ClientAuthError.js";
 import {
-    APP_METADATA,
     AUTHORITY_METADATA_CONSTANTS,
     AuthenticationScheme,
     CredentialType,
+    PersistentCacheKeys,
     SERVER_TELEM_CONSTANTS,
     Separators,
     ThrottlingConstants,
@@ -365,7 +365,7 @@ export function generateAppMetadataKey({
     clientId,
 }: AppMetadataEntity): string {
     const appMetaDataKeyArray: Array<string> = [
-        APP_METADATA,
+        PersistentCacheKeys.APP_METADATA,
         environment,
         clientId,
     ];
@@ -384,7 +384,7 @@ export function isAppMetadataEntity(key: string, entity: object): boolean {
     }
 
     return (
-        key.indexOf(APP_METADATA) === 0 &&
+        key.indexOf(PersistentCacheKeys.APP_METADATA) === 0 &&
         entity.hasOwnProperty("clientId") &&
         entity.hasOwnProperty("environment")
     );

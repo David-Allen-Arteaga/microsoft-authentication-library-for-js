@@ -352,7 +352,7 @@ export class PopupClient extends StandardInteractionClient {
 
             if (e instanceof AuthError) {
                 (e as AuthError).setCorrelationId(this.correlationId);
-                await serverTelemetryManager.cacheFailedRequest(e);
+                serverTelemetryManager.cacheFailedRequest(e);
             }
 
             throw e;
@@ -498,7 +498,7 @@ export class PopupClient extends StandardInteractionClient {
 
             if (e instanceof AuthError) {
                 (e as AuthError).setCorrelationId(this.correlationId);
-                await serverTelemetryManager.cacheFailedRequest(e);
+                serverTelemetryManager.cacheFailedRequest(e);
             }
             this.tempCache.setInteractionInProgress(false);
             this.eventHandler.emitEvent(

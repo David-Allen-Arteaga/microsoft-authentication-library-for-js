@@ -33,6 +33,7 @@ export class PersistentCache {
     private storage: IWindowStorage<string>;
     private encryptedStorage?: LocalStorage;
     private encryptionCookie?: EncryptionCookie;
+    private initialized: boolean;
 
     constructor(clientId: string, config: Required<CacheOptions>) {
         this.clientId = clientId;
@@ -43,9 +44,15 @@ export class PersistentCache {
         } else {
             this.storage = getBrowserStorage(config.cacheLocation);
         }
+        this.initialized = false;
     }
 
+    /**
+     * Async initializer for storage. When using localStorage this will generate or import an encryption key and decrypt any existing localStorage entries
+     * @returns 
+     */
     async initialize(): Promise<void> {
+        this.initialized = true;
         if (!this.encryptedStorage) {
             return;
         }
@@ -86,26 +93,43 @@ export class PersistentCache {
         await this.importExistingCache();
     }
 
+    /**
+     * Returns an item from the cache for a given key
+     * @param key 
+     * @returns 
+     */
     getItem(key: string): string | null {
         return this.storage.getItem(key);
     }
 
+    /**
+     * Stores an item in the cache. If location is localStorage this is encrypted first.
+     * @param key 
+     * @param value 
+     */
     async setItem(key: string, value: string): Promise<void> {
         this.storage.setItem(key, value);
 
         if (this.encryptionCookie && this.encryptedStorage) {
-            const {data, nonce} = await encrypt(this.encryptionCookie.key, value);
+            const {data, nonce} = await encrypt(this.encryptionCookie.key, value, this.getContext(key));
 
             const encryptedData: EncryptedData = {id: this.encryptionCookie.id, nonce: nonce, data: data};
             this.encryptedStorage.setItem(key, JSON.stringify(encryptedData));
         }
     }
 
+    /**
+     * Removes item from the cache.
+     * @param key 
+     */
     removeItem(key: string): void {
         this.storage.removeItem(key);
         this.encryptedStorage?.removeItem(key);
     }
 
+    /**
+     * Removes all known MSAL keys from the cache
+     */
     clear(): void {
         // Removes all remaining MSAL cache items
         this.storage.getKeys().forEach((cacheKey: string) => {
@@ -119,6 +143,10 @@ export class PersistentCache {
         });
     }
 
+    /**
+     * Helper to decrypt all known MSAL keys in localStorage and save them to inMemory storage
+     * @returns 
+     */
     private async importExistingCache(): Promise<void> {
         if (!this.encryptedStorage) {
             return;
@@ -126,8 +154,12 @@ export class PersistentCache {
 
         await this.importAccounts();
         await this.importTokens();
+        await this.importMiscEntries();
     }
 
+    /**
+     * Helper to decrypt and save account related cache entries
+     */
     private async importAccounts(): Promise<void> {
         const accountKeyStr = await this.getItemFromEncryptedCache(StaticCacheKeys.ACCOUNT_KEYS);
         if (accountKeyStr) {
@@ -151,6 +183,9 @@ export class PersistentCache {
         }
     }
 
+    /**
+     * Helper to decrypt and save token related cache entries
+     */
     private async importTokens(): Promise<void> {
         const tkKey = `${StaticCacheKeys.TOKEN_KEYS}.${this.clientId}`
         const tokenKeyStr = await this.getItemFromEncryptedCache(tkKey);
@@ -167,6 +202,24 @@ export class PersistentCache {
         }
     }
 
+    /**
+     * Helper to decrypt and save additional MSAL cache entries (currently just appMetadata)
+     */
+    private async importMiscEntries(): Promise<void> {
+        const keysToImport: Array<string> = [];
+        this.encryptedStorage?.getKeys().forEach((key) => {
+            if (key.includes(PersistentCacheKeys.APP_METADATA) && key.includes(this.clientId)) {
+                keysToImport.push(key);
+            }
+        });
+
+        await this.importArray(keysToImport);
+    }
+
+    /**
+     * Helper to decrypt and save an array of cache keys
+     * @param arr 
+     */
     private async importArray(arr: Array<string>): Promise<void> {
         const promiseArr: Array<Promise<void>> = [];
         arr.forEach((key) => {
@@ -181,6 +234,11 @@ export class PersistentCache {
         await Promise.all(promiseArr);
     }
 
+    /**
+     * Helper to decrypt and save cache entries
+     * @param key 
+     * @returns 
+     */
     private async getItemFromEncryptedCache(key: string): Promise<string | null> {
         if (!this.encryptedStorage || !this.encryptionCookie) {
             return null;
@@ -204,9 +262,24 @@ export class PersistentCache {
         } catch (e) {
             // Not a valid encrypted object, remove
             this.encryptedStorage?.removeItem(key);
+            // TODO: Log to telemetry
             return null;
         }
 
-        return decrypt(this.encryptionCookie.key, encObj.nonce, encObj.data);
+        return decrypt(this.encryptionCookie.key, encObj.nonce, this.getContext(key), encObj.data);
+    }
+
+    /**
+     * Gets encryption context for a given cache entry. This is clientId for app specific entries, empty string for shared entries
+     * @param key 
+     * @returns 
+     */
+    private getContext(key: string): string {
+        let context = "";
+        if (key.includes(this.clientId)) {
+            context = this.clientId; // Used to bind encryption key to this appId
+        }
+
+        return context;
     }
 }

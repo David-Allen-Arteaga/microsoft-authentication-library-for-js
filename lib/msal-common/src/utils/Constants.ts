@@ -113,12 +113,8 @@ export type HeaderNames = (typeof HeaderNames)[keyof typeof HeaderNames];
  * Persistent cache keys MSAL which stay while user is logged in.
  */
 export const PersistentCacheKeys = {
-    ID_TOKEN: "idtoken",
-    CLIENT_INFO: "client.info",
-    ADAL_ID_TOKEN: "adal.idtoken",
-    ERROR: "error",
-    ERROR_DESC: "error.description",
     ACTIVE_ACCOUNT_FILTERS: "active-account-filters", // new cache entry for active_account for a more robust version for browser
+    APP_METADATA: "appmetadata"
 } as const;
 export type PersistentCacheKeys =
     (typeof PersistentCacheKeys)[keyof typeof PersistentCacheKeys];
@@ -251,7 +247,6 @@ export type CacheType = (typeof CacheType)[keyof typeof CacheType];
 /**
  * More Cache related constants
  */
-export const APP_METADATA = "appmetadata";
 export const CLIENT_INFO = "client_info";
 export const THE_FAMILY_ID = "1";
 
