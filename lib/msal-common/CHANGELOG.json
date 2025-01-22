@@ -2,6 +2,39 @@
   "name": "@azure/msal-common",
   "entries": [
     {
+      "date": "Wed, 22 Jan 2025 18:42:44 GMT",
+      "version": "15.0.2",
+      "tag": "@azure/msal-common_v15.0.2",
+      "comments": {
+        "patch": [
+          {
+            "author": "thomas.norling@microsoft.com",
+            "package": "@azure/msal-common",
+            "commit": "6fd7c8797b77ede8003fcc89ae0fda4fc599f108",
+            "comment": "Avoid calling class methods in their own constructors"
+          },
+          {
+            "author": "beachball",
+            "package": "@azure/msal-common",
+            "comment": "Bump eslint-config-msal to v0.0.0",
+            "commit": "not available"
+          },
+          {
+            "author": "beachball",
+            "package": "@azure/msal-common",
+            "comment": "Bump msal-test-utils to v0.0.1",
+            "commit": "not available"
+          },
+          {
+            "author": "beachball",
+            "package": "@azure/msal-common",
+            "comment": "Bump rollup-msal to v0.0.0",
+            "commit": "not available"
+          }
+        ]
+      }
+    },
+    {
       "date": "Wed, 15 Jan 2025 05:05:17 GMT",
       "version": "15.0.1",
       "tag": "@azure/msal-common_v15.0.1",

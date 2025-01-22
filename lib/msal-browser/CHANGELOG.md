@@ -1,8 +1,20 @@
 # Change Log - @azure/msal-browser
 
-<!-- This log was last generated on Wed, 15 Jan 2025 05:05:17 GMT and should not be manually modified. -->
+<!-- This log was last generated on Wed, 22 Jan 2025 18:42:44 GMT and should not be manually modified. -->
 
 <!-- Start content -->
+
+## 4.0.2
+
+Wed, 22 Jan 2025 18:42:44 GMT
+
+### Patches
+
+- Fix 'Cannot read properties of undefined (reading 'incrementFields')' error (thomas.norling@microsoft.com)
+- Bump @azure/msal-common to v15.0.2
+- Bump eslint-config-msal to v0.0.0
+- Bump msal-test-utils to v0.0.1
+- Bump rollup-msal to v0.0.0
 
 ## 4.0.1
 
